@@ -59,19 +59,31 @@ export default function MappingPage() {
       }
 
       // Load GHL fields (requires location ID)
-      if (configData.config?.ghlLocationId) {
+      const locationIdToUse = configData.config?.ghlLocationId;
+      if (locationIdToUse) {
         try {
-          const ghlRes = await fetch(`/api/ghl/fields?locationId=${configData.config.ghlLocationId}`);
+          console.log('Loading GHL fields for location:', locationIdToUse);
+          const ghlRes = await fetch(`/api/ghl/fields?locationId=${locationIdToUse}`);
+          console.log('GHL fields API response status:', ghlRes.status);
+          
           if (!ghlRes.ok) {
-            const errorData = await ghlRes.json();
-            throw new Error(errorData.error || `HTTP ${ghlRes.status}`);
+            const errorData = await ghlRes.json().catch(() => ({}));
+            throw new Error(errorData.error || `HTTP ${ghlRes.status}: ${ghlRes.statusText}`);
           }
+          
           const ghlData = await ghlRes.json();
+          console.log('GHL fields API response:', ghlData);
+          
           if (ghlData.error) {
             throw new Error(ghlData.error);
           }
-          console.log('GHL fields loaded:', ghlData.fields?.length || 0);
-          setGhlFields(ghlData.fields || []);
+          
+          if (!ghlData.fields || !Array.isArray(ghlData.fields)) {
+            throw new Error('Invalid response format from GHL fields API');
+          }
+          
+          console.log('GHL fields loaded successfully:', ghlData.fields.length);
+          setGhlFields(ghlData.fields);
         } catch (error) {
           console.error('Error loading GHL fields:', error);
           const errorMsg = error instanceof Error ? error.message : 'Unknown error';
@@ -80,29 +92,48 @@ export default function MappingPage() {
       } else {
         // Try to get locations first
         try {
+          console.log('No location ID in config, fetching locations...');
           const locationsRes = await fetch('/api/ghl/locations');
+          console.log('Locations API response status:', locationsRes.status);
+          
           if (!locationsRes.ok) {
-            const errorData = await locationsRes.json();
-            throw new Error(errorData.error || `HTTP ${locationsRes.status}`);
+            const errorData = await locationsRes.json().catch(() => ({}));
+            throw new Error(errorData.error || `HTTP ${locationsRes.status}: ${locationsRes.statusText}`);
           }
+          
           const locationsData = await locationsRes.json();
+          console.log('Locations API response:', locationsData);
+          
           if (locationsData.error) {
             throw new Error(locationsData.error);
           }
+          
           if (locationsData.locations?.length > 0) {
             const firstLocation = locationsData.locations[0];
-            console.log('Using location:', firstLocation.id || firstLocation.name);
-            const ghlRes = await fetch(`/api/ghl/fields?locationId=${firstLocation.id}`);
+            const locationId = firstLocation.id || firstLocation.locationId || firstLocation.name;
+            console.log('Using location:', locationId);
+            
+            const ghlRes = await fetch(`/api/ghl/fields?locationId=${locationId}`);
+            console.log('GHL fields API response status:', ghlRes.status);
+            
             if (!ghlRes.ok) {
-              const errorData = await ghlRes.json();
-              throw new Error(errorData.error || `HTTP ${ghlRes.status}`);
+              const errorData = await ghlRes.json().catch(() => ({}));
+              throw new Error(errorData.error || `HTTP ${ghlRes.status}: ${ghlRes.statusText}`);
             }
+            
             const ghlData = await ghlRes.json();
+            console.log('GHL fields API response:', ghlData);
+            
             if (ghlData.error) {
               throw new Error(ghlData.error);
             }
-            console.log('GHL fields loaded:', ghlData.fields?.length || 0);
-            setGhlFields(ghlData.fields || []);
+            
+            if (!ghlData.fields || !Array.isArray(ghlData.fields)) {
+              throw new Error('Invalid response format from GHL fields API');
+            }
+            
+            console.log('GHL fields loaded successfully:', ghlData.fields.length);
+            setGhlFields(ghlData.fields);
           } else {
             setMessage({ type: 'error', text: 'No GoHighLevel locations found. Please configure your GHL token.' });
           }
