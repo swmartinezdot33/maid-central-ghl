@@ -62,25 +62,54 @@ export default function MappingPage() {
       if (configData.config?.ghlLocationId) {
         try {
           const ghlRes = await fetch(`/api/ghl/fields?locationId=${configData.config.ghlLocationId}`);
+          if (!ghlRes.ok) {
+            const errorData = await ghlRes.json();
+            throw new Error(errorData.error || `HTTP ${ghlRes.status}`);
+          }
           const ghlData = await ghlRes.json();
+          if (ghlData.error) {
+            throw new Error(ghlData.error);
+          }
+          console.log('GHL fields loaded:', ghlData.fields?.length || 0);
           setGhlFields(ghlData.fields || []);
         } catch (error) {
           console.error('Error loading GHL fields:', error);
-          setMessage({ type: 'error', text: 'Failed to load GoHighLevel fields. Please ensure OAuth is completed.' });
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+          setMessage({ type: 'error', text: `Failed to load GoHighLevel fields: ${errorMsg}` });
         }
       } else {
         // Try to get locations first
         try {
           const locationsRes = await fetch('/api/ghl/locations');
+          if (!locationsRes.ok) {
+            const errorData = await locationsRes.json();
+            throw new Error(errorData.error || `HTTP ${locationsRes.status}`);
+          }
           const locationsData = await locationsRes.json();
+          if (locationsData.error) {
+            throw new Error(locationsData.error);
+          }
           if (locationsData.locations?.length > 0) {
             const firstLocation = locationsData.locations[0];
+            console.log('Using location:', firstLocation.id || firstLocation.name);
             const ghlRes = await fetch(`/api/ghl/fields?locationId=${firstLocation.id}`);
+            if (!ghlRes.ok) {
+              const errorData = await ghlRes.json();
+              throw new Error(errorData.error || `HTTP ${ghlRes.status}`);
+            }
             const ghlData = await ghlRes.json();
+            if (ghlData.error) {
+              throw new Error(ghlData.error);
+            }
+            console.log('GHL fields loaded:', ghlData.fields?.length || 0);
             setGhlFields(ghlData.fields || []);
+          } else {
+            setMessage({ type: 'error', text: 'No GoHighLevel locations found. Please configure your GHL token.' });
           }
         } catch (error) {
           console.error('Error loading GHL fields:', error);
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+          setMessage({ type: 'error', text: `Failed to load GoHighLevel fields: ${errorMsg}` });
         }
       }
     } catch (error) {
