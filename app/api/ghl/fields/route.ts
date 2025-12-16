@@ -16,12 +16,22 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Debug: Check if token exists before calling API
+    const { getGHLPrivateToken } = await import('@/lib/kv');
+    const tokenCheck = await getGHLPrivateToken();
+    console.log('[GHL Fields API] Token check:', { 
+      exists: !!tokenCheck, 
+      hasToken: !!tokenCheck?.privateToken,
+      locationId: tokenCheck?.locationId 
+    });
+
     const fields = await ghlAPI.getAllFields(locationId);
     return NextResponse.json({ fields });
   } catch (error) {
-    console.error('Error fetching GHL fields:', error);
+    console.error('[GHL Fields API] Error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to fetch fields';
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to fetch fields' },
+      { error: errorMessage },
       { status: 500 }
     );
   }

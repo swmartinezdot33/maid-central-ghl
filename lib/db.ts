@@ -157,6 +157,12 @@ export async function storeGHLPrivateToken(tokenData: GHLPrivateToken): Promise<
   await initDatabase();
   const sql = getSql();
   
+  console.log('[DB] storeGHLPrivateToken called:', { 
+    hasToken: !!tokenData.privateToken,
+    tokenLength: tokenData.privateToken?.length || 0,
+    locationId: tokenData.locationId 
+  });
+  
   const existing = await sql`
     SELECT id FROM ghl_private_token LIMIT 1
   `;
@@ -170,42 +176,69 @@ export async function storeGHLPrivateToken(tokenData: GHLPrivateToken): Promise<
         updated_at = NOW()
       WHERE id = ${existing[0].id}
     `;
+    console.log('[DB] Updated existing GHL token record');
   } else {
     await sql`
       INSERT INTO ghl_private_token (private_token, location_id)
       VALUES (${tokenData.privateToken}, ${tokenData.locationId})
     `;
+    console.log('[DB] Inserted new GHL token record');
   }
+  
+  // Verify it was saved
+  const verify = await sql`
+    SELECT private_token, location_id FROM ghl_private_token LIMIT 1
+  `;
+  console.log('[DB] Verification after save:', {
+    rowCount: verify.length,
+    hasToken: verify.length > 0 ? !!verify[0].private_token : false,
+    tokenLength: verify.length > 0 && verify[0].private_token ? String(verify[0].private_token).length : 0
+  });
 }
 
 export async function getGHLPrivateToken(): Promise<GHLPrivateToken | null> {
   await initDatabase();
   const sql = getSql();
   
-  const result = await sql`
-    SELECT private_token, location_id
-    FROM ghl_private_token
-    LIMIT 1
-  `;
+  try {
+    const result = await sql`
+      SELECT private_token, location_id
+      FROM ghl_private_token
+      LIMIT 1
+    `;
 
-  if (result.length === 0) {
-    return null;
-  }
+    console.log('[DB] getGHLPrivateToken result:', { 
+      rowCount: result.length,
+      hasData: result.length > 0,
+      firstRow: result.length > 0 ? {
+        hasToken: !!result[0].private_token,
+        tokenLength: result[0].private_token ? String(result[0].private_token).length : 0,
+        locationId: result[0].location_id
+      } : null
+    });
 
-  const row = result[0];
-  const privateToken = row.private_token as string | null;
-  const locationId = row.location_id as string | null;
-  
-  // Check if token is actually present
-  if (!privateToken || privateToken.trim() === '') {
-    console.warn('GHL private token exists in database but is empty or null');
-    return null;
+    if (result.length === 0) {
+      return null;
+    }
+
+    const row = result[0];
+    const privateToken = row.private_token as string | null;
+    const locationId = row.location_id as string | null;
+    
+    // Check if token is actually present
+    if (!privateToken || privateToken.trim() === '') {
+      console.warn('[DB] GHL private token exists in database but is empty or null');
+      return null;
+    }
+    
+    return {
+      privateToken,
+      locationId: locationId || '',
+    };
+  } catch (error) {
+    console.error('[DB] Error fetching GHL private token:', error);
+    throw error;
   }
-  
-  return {
-    privateToken,
-    locationId: locationId || '',
-  };
 }
 
 // Integration Config
