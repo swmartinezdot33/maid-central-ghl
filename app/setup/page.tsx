@@ -227,13 +227,17 @@ function SetupPageContent() {
             />
             <div style={{ marginTop: '0.75rem', padding: '1rem', backgroundColor: '#f5f5f5', borderRadius: '4px', fontSize: '0.85rem' }}>
               <p style={{ marginBottom: '0.5rem', fontWeight: 600, color: '#333' }}>Required Scopes/Permissions:</p>
-              <p style={{ marginBottom: '0.5rem', color: '#666' }}>When creating your Private API Token in GoHighLevel, ensure it has the following scopes:</p>
+              <p style={{ marginBottom: '0.5rem', color: '#666' }}>When creating your Private API Token in GoHighLevel, ensure it has the following scopes with <strong style={{ color: '#d32f2f' }}>READ and WRITE</strong> access:</p>
               <ul style={{ marginLeft: '1.5rem', marginBottom: '0.5rem', color: '#666', lineHeight: '1.6' }}>
                 <li><strong>Locations:</strong> Read access to fetch location information</li>
-                <li><strong>Contacts:</strong> Read and Write access to create contacts and read custom fields</li>
-                <li><strong>Custom Fields:</strong> Read access to fetch contact, opportunity, and object custom fields</li>
-                <li><strong>Opportunities:</strong> Read access to fetch opportunity custom fields</li>
+                <li><strong>Contacts:</strong> <span style={{ color: '#d32f2f', fontWeight: 600 }}>Read and Write</span> - Required to create contacts and update contact custom fields from Maid Central quotes</li>
+                <li><strong>Custom Fields:</strong> Read access to fetch contact, opportunity, and object custom fields for mapping</li>
+                <li><strong>Opportunities:</strong> <span style={{ color: '#d32f2f', fontWeight: 600 }}>Read and Write</span> - Required to create/update opportunities and opportunity custom fields</li>
+                <li><strong>Objects:</strong> <span style={{ color: '#d32f2f', fontWeight: 600 }}>Read and Write</span> - Required to create/update objects and object custom fields</li>
               </ul>
+              <p style={{ marginTop: '0.75rem', padding: '0.5rem', backgroundColor: '#fff3cd', borderRadius: '3px', fontSize: '0.85rem', color: '#856404' }}>
+                <strong>Important:</strong> Write permissions are required so that quote data from Maid Central can be synced to your GoHighLevel account.
+              </p>
               <p style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#888', fontStyle: 'italic' }}>
                 You can find these settings in: <strong>Settings → Integrations → Private Integrations</strong>
               </p>
