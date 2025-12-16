@@ -78,7 +78,16 @@ export class GHLAPI {
       return response.data?.customFields || [];
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        throw new Error(`Failed to fetch custom fields: ${error.response?.data?.message || error.message}`);
+        const status = error.response?.status;
+        const errorData = error.response?.data;
+        const errorMessage = errorData?.message || errorData?.error || error.message;
+        console.error('[GHL API] Custom fields error:', {
+          status,
+          error: errorMessage,
+          locationId,
+          response: errorData
+        });
+        throw new Error(`Failed to fetch custom fields (${status}): ${errorMessage}`);
       }
       throw error;
     }
@@ -105,8 +114,7 @@ export class GHLAPI {
 
   async getAllFields(locationId: string): Promise<Array<{ name: string; label: string; type?: string }>> {
     const standardFields = await this.getStandardFields();
-    const customFields = await this.getCustomFields(locationId);
-
+    
     const standardFieldLabels: Record<string, string> = {
       firstName: 'First Name',
       lastName: 'Last Name',
@@ -128,6 +136,15 @@ export class GHLAPI {
       label: standardFieldLabels[field] || field,
       type: 'standard',
     }));
+
+    // Try to get custom fields, but don't fail if it doesn't work
+    let customFields: any[] = [];
+    try {
+      customFields = await this.getCustomFields(locationId);
+    } catch (error) {
+      console.warn('[GHL API] Could not fetch custom fields, returning standard fields only:', error);
+      // Return standard fields even if custom fields fail
+    }
 
     const customFieldsFormatted = customFields.map((field: any) => ({
       name: field.id || field.name,
