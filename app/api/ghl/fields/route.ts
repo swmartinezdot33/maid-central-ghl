@@ -25,7 +25,9 @@ export async function GET(request: NextRequest) {
       locationId: tokenCheck?.locationId 
     });
 
+    console.log(`[GHL Fields API] Fetching all fields for location: ${locationId}`);
     const fields = await ghlAPI.getAllFields(locationId);
+    console.log(`[GHL Fields API] Returning ${fields.length} total fields (${fields.filter(f => f.type === 'standard').length} standard, ${fields.filter(f => f.type === 'custom').length} custom)`);
     return NextResponse.json({ fields });
   } catch (error) {
     console.error('[GHL Fields API] Error:', error);
