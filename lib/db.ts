@@ -193,9 +193,18 @@ export async function getGHLPrivateToken(): Promise<GHLPrivateToken | null> {
   }
 
   const row = result[0];
+  const privateToken = row.private_token as string | null;
+  const locationId = row.location_id as string | null;
+  
+  // Check if token is actually present
+  if (!privateToken || privateToken.trim() === '') {
+    console.warn('GHL private token exists in database but is empty or null');
+    return null;
+  }
+  
   return {
-    privateToken: row.private_token as string,
-    locationId: row.location_id as string,
+    privateToken,
+    locationId: locationId || '',
   };
 }
 

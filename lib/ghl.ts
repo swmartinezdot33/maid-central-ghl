@@ -34,8 +34,11 @@ export class GHLAPI {
 
   async getPrivateToken(): Promise<string> {
     const tokenData = await getGHLPrivateToken();
-    if (!tokenData || !tokenData.privateToken) {
+    if (!tokenData) {
       throw new Error('GHL private token not configured. Please add your private token in settings.');
+    }
+    if (!tokenData.privateToken || tokenData.privateToken.trim() === '') {
+      throw new Error('GHL private token is empty. Please reconfigure your private token in settings.');
     }
     return tokenData.privateToken;
   }
