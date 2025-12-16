@@ -225,6 +225,19 @@ function SetupPageContent() {
               required={!ghlToken?.hasToken}
               placeholder="Enter your GoHighLevel private API token"
             />
+            <div style={{ marginTop: '0.75rem', padding: '1rem', backgroundColor: '#f5f5f5', borderRadius: '4px', fontSize: '0.85rem' }}>
+              <p style={{ marginBottom: '0.5rem', fontWeight: 600, color: '#333' }}>Required Scopes/Permissions:</p>
+              <p style={{ marginBottom: '0.5rem', color: '#666' }}>When creating your Private API Token in GoHighLevel, ensure it has the following scopes:</p>
+              <ul style={{ marginLeft: '1.5rem', marginBottom: '0.5rem', color: '#666', lineHeight: '1.6' }}>
+                <li><strong>Locations:</strong> Read access to fetch location information</li>
+                <li><strong>Contacts:</strong> Read and Write access to create contacts and read custom fields</li>
+                <li><strong>Custom Fields:</strong> Read access to fetch contact, opportunity, and object custom fields</li>
+                <li><strong>Opportunities:</strong> Read access to fetch opportunity custom fields</li>
+              </ul>
+              <p style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#888', fontStyle: 'italic' }}>
+                You can find these settings in: <strong>Settings → Integrations → Private Integrations</strong>
+              </p>
+            </div>
           </div>
 
           <div className="form-group">
@@ -238,7 +251,7 @@ function SetupPageContent() {
               placeholder="Enter your GoHighLevel location/subaccount ID"
             />
             <p style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: '#666' }}>
-              You can find this in your GoHighLevel URL or API settings
+              You can find this in your GoHighLevel URL or API settings. It's typically in the format: <code style={{ backgroundColor: '#f0f0f0', padding: '2px 4px', borderRadius: '2px' }}>TEKiMreVHPe3olIARlmx</code>
             </p>
           </div>
 
