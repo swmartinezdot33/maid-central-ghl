@@ -308,7 +308,11 @@ export default function MappingPage() {
                     <option value="">Select field...</option>
                     {ghlFields.map((field) => (
                       <option key={field.name} value={field.name}>
-                        {field.label} {field.type === 'custom' ? '(Custom)' : ''}
+                        {field.label} 
+                        {field.category === 'opportunity' ? ' (Opportunity)' : ''}
+                        {field.category === 'object' ? ' (Object)' : ''}
+                        {field.category === 'contact' && field.type !== 'standard' ? ' (Contact Custom)' : ''}
+                        {field.type === 'standard' ? ' (Standard)' : ''}
                       </option>
                     ))}
                   </select>

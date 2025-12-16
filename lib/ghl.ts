@@ -67,34 +67,108 @@ export class GHLAPI {
     }
   }
 
-  async getCustomFields(locationId: string): Promise<any[]> {
+  async getContactCustomFields(locationId: string): Promise<any[]> {
     const token = await this.getPrivateToken();
     
     try {
-      const response = await this.client.get('/contacts/customFields/', {
+      console.log(`[GHL API] Fetching contact custom fields for location: ${locationId}`);
+      const response = await this.client.get(`/locations/${locationId}/customFields`, {
         headers: {
           Authorization: `Bearer ${token}`,
           Version: '2021-07-28',
         },
         params: {
-          locationId,
+          fieldType: 'contact',
         },
       });
-      return response.data?.customFields || [];
+      
+      // Handle different response structures - return ALL fields including empty ones
+      const customFields = response.data?.customFields || 
+                          response.data?.data?.customFields ||
+                          (Array.isArray(response.data) ? response.data : []) ||
+                          (Array.isArray(response.data?.data) ? response.data.data : []) ||
+                          [];
+      
+      console.log(`[GHL API] Found ${customFields.length} contact custom fields`);
+      return customFields;
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        const status = error.response?.status;
-        const errorData = error.response?.data;
-        const errorMessage = errorData?.message || errorData?.error || error.message;
-        console.error('[GHL API] Custom fields error:', {
-          status,
-          error: errorMessage,
-          locationId,
-          response: errorData
+      console.error('[GHL API] Error fetching contact custom fields:', error);
+      // Return empty array on error
+      return [];
+    }
+  }
+
+  async getOpportunityCustomFields(locationId: string): Promise<any[]> {
+    const token = await this.getPrivateToken();
+    
+    try {
+      console.log(`[GHL API] Fetching opportunity custom fields for location: ${locationId}`);
+      const response = await this.client.get(`/locations/${locationId}/customFields`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Version: '2021-07-28',
+        },
+        params: {
+          fieldType: 'opportunity',
+        },
+      });
+      
+      const customFields = response.data?.customFields || 
+                          response.data?.data?.customFields ||
+                          (Array.isArray(response.data) ? response.data : []) ||
+                          (Array.isArray(response.data?.data) ? response.data.data : []) ||
+                          [];
+      
+      console.log(`[GHL API] Found ${customFields.length} opportunity custom fields`);
+      return customFields;
+    } catch (error) {
+      console.error('[GHL API] Error fetching opportunity custom fields:', error);
+      // Return empty array on error
+      return [];
+    }
+  }
+
+  async getObjectCustomFields(locationId: string): Promise<any[]> {
+    const token = await this.getPrivateToken();
+    
+    try {
+      console.log(`[GHL API] Fetching object custom fields for location: ${locationId}`);
+      // Try different endpoints for object custom fields
+      let response;
+      try {
+        response = await this.client.get(`/locations/${locationId}/customFields`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Version: '2021-07-28',
+          },
+          params: {
+            fieldType: 'object',
+          },
         });
-        throw new Error(`Failed to fetch custom fields (${status}): ${errorMessage}`);
+      } catch (error) {
+        // Try alternative endpoint structure
+        console.log('[GHL API] Trying alternative object fields endpoint...');
+        response = await this.client.get(`/locations/${locationId}/customFields/object`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Version: '2021-07-28',
+          },
+        });
       }
-      throw error;
+      
+      const customFields = response.data?.customFields || 
+                          response.data?.data?.customFields ||
+                          response.data?.objectCustomFields ||
+                          (Array.isArray(response.data) ? response.data : []) ||
+                          (Array.isArray(response.data?.data) ? response.data.data : []) ||
+                          [];
+      
+      console.log(`[GHL API] Found ${customFields.length} object custom fields`);
+      return customFields;
+    } catch (error) {
+      console.error('[GHL API] Error fetching object custom fields:', error);
+      // Return empty array on error
+      return [];
     }
   }
 
@@ -117,7 +191,7 @@ export class GHLAPI {
     ];
   }
 
-  async getAllFields(locationId: string): Promise<Array<{ name: string; label: string; type?: string }>> {
+  async getAllFields(locationId: string): Promise<Array<{ name: string; label: string; type?: string; category?: string }>> {
     const standardFields = await this.getStandardFields();
     
     const standardFieldLabels: Record<string, string> = {
@@ -140,24 +214,70 @@ export class GHLAPI {
       name: field,
       label: standardFieldLabels[field] || field,
       type: 'standard',
+      category: 'contact',
     }));
 
-    // Try to get custom fields, but don't fail if it doesn't work
-    let customFields: any[] = [];
-    try {
-      customFields = await this.getCustomFields(locationId);
-    } catch (error) {
-      console.warn('[GHL API] Could not fetch custom fields, returning standard fields only:', error);
-      // Return standard fields even if custom fields fail
-    }
+    console.log(`[GHL API] getAllFields called for location: ${locationId}`);
+    
+    // Fetch all custom field types in parallel
+    const [contactCustomFields, opportunityCustomFields, objectCustomFields] = await Promise.all([
+      this.getContactCustomFields(locationId),
+      this.getOpportunityCustomFields(locationId),
+      this.getObjectCustomFields(locationId),
+    ]);
 
-    const customFieldsFormatted = customFields.map((field: any) => ({
-      name: field.id || field.name,
-      label: field.name || field.label,
-      type: field.fieldType || 'custom',
-    }));
+    // Format contact custom fields - include ALL fields, don't filter
+    const contactCustomFieldsFormatted = contactCustomFields.map((field: any) => {
+      const fieldId = field.id || field.fieldId || field._id || field.customFieldId || field.key;
+      const fieldName = field.name || field.label || field.fieldName || field.title;
+      const fieldType = field.fieldType || field.type || field.dataType || field.field_type || 'custom';
+      
+      return {
+        name: fieldId || field.key || fieldName || `contact_custom_${contactCustomFields.indexOf(field)}`,
+        label: fieldName || field.label || fieldId || 'Custom Field',
+        type: fieldType,
+        category: 'contact',
+      };
+    });
 
-    return [...fields, ...customFieldsFormatted];
+    // Format opportunity custom fields - include ALL fields, don't filter
+    const opportunityCustomFieldsFormatted = opportunityCustomFields.map((field: any) => {
+      const fieldId = field.id || field.fieldId || field._id || field.customFieldId || field.key;
+      const fieldName = field.name || field.label || field.fieldName || field.title;
+      const fieldType = field.fieldType || field.type || field.dataType || field.field_type || 'custom';
+      
+      return {
+        name: fieldId || field.key || fieldName || `opportunity_custom_${opportunityCustomFields.indexOf(field)}`,
+        label: fieldName || field.label || fieldId || 'Custom Field',
+        type: fieldType,
+        category: 'opportunity',
+      };
+    });
+
+    // Format object custom fields - include ALL fields, don't filter
+    const objectCustomFieldsFormatted = objectCustomFields.map((field: any) => {
+      const fieldId = field.id || field.fieldId || field._id || field.customFieldId || field.key;
+      const fieldName = field.name || field.label || field.fieldName || field.title;
+      const fieldType = field.fieldType || field.type || field.dataType || field.field_type || 'custom';
+      
+      return {
+        name: fieldId || field.key || fieldName || `object_custom_${objectCustomFields.indexOf(field)}`,
+        label: fieldName || field.label || fieldId || 'Custom Field',
+        type: fieldType,
+        category: 'object',
+      };
+    });
+
+    const allFields = [
+      ...fields,
+      ...contactCustomFieldsFormatted,
+      ...opportunityCustomFieldsFormatted,
+      ...objectCustomFieldsFormatted,
+    ];
+
+    console.log(`[GHL API] Total fields: ${fields.length} standard + ${contactCustomFields.length} contact custom + ${opportunityCustomFields.length} opportunity custom + ${objectCustomFields.length} object custom = ${allFields.length}`);
+
+    return allFields;
   }
 
   async createContact(locationId: string, contactData: GHLContact): Promise<any> {
