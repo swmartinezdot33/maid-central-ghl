@@ -7,6 +7,7 @@ interface Field {
   name: string;
   label: string;
   type?: string;
+  category?: string;
 }
 
 interface FieldMapping {
