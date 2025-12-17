@@ -30,8 +30,15 @@ export interface FieldMapping {
 
 export interface IntegrationConfig {
   ghlLocationId?: string;
-  fieldMappings: FieldMapping[];
+  fieldMappings: FieldMapping[]; // Keep for backward compatibility, but will use auto-mapping
   enabled: boolean;
+  ghlTag?: string; // DEPRECATED: Use ghlTags instead. Kept for backward compatibility
+  ghlTags?: string[]; // Tags to add to contacts when syncing quotes (multiple tags supported)
+  syncQuotes: boolean; // Toggle for syncing quotes
+  syncCustomers: boolean; // Toggle for syncing customers
+  createOpportunities: boolean; // Toggle for creating opportunities when quotes are synced
+  autoCreateFields: boolean; // Automatically create custom fields in GHL
+  customFieldPrefix: string; // Prefix for custom fields (default: "maidcentral_quote_")
 }
 
 // Initialize database tables
@@ -66,10 +73,30 @@ export async function initDatabase(): Promise<void> {
         id SERIAL PRIMARY KEY,
         ghl_location_id TEXT,
         enabled BOOLEAN DEFAULT false,
+        ghl_tag TEXT,
+        sync_quotes BOOLEAN DEFAULT true,
+        sync_customers BOOLEAN DEFAULT false,
+        create_opportunities BOOLEAN DEFAULT true,
+        auto_create_fields BOOLEAN DEFAULT true,
+        custom_field_prefix TEXT DEFAULT 'maidcentral_quote_',
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
       )
     `;
+    
+    // Add new columns if they don't exist (for existing databases)
+    try {
+      await sql`ALTER TABLE integration_config ADD COLUMN IF NOT EXISTS ghl_tag TEXT`;
+      await sql`ALTER TABLE integration_config ADD COLUMN IF NOT EXISTS sync_quotes BOOLEAN DEFAULT true`;
+      await sql`ALTER TABLE integration_config ADD COLUMN IF NOT EXISTS sync_customers BOOLEAN DEFAULT false`;
+      await sql`ALTER TABLE integration_config ADD COLUMN IF NOT EXISTS create_opportunities BOOLEAN DEFAULT true`;
+      await sql`ALTER TABLE integration_config ADD COLUMN IF NOT EXISTS auto_create_fields BOOLEAN DEFAULT true`;
+      await sql`ALTER TABLE integration_config ADD COLUMN IF NOT EXISTS custom_field_prefix TEXT DEFAULT 'maidcentral_quote_'`;
+      await sql`ALTER TABLE integration_config ADD COLUMN IF NOT EXISTS ghl_tags TEXT`; // JSON array of tags
+    } catch (error) {
+      // Columns might already exist, ignore error
+      console.log('Columns already exist or error adding them:', error);
+    }
 
     await sql`
       CREATE TABLE IF NOT EXISTS field_mappings (
@@ -80,6 +107,61 @@ export async function initDatabase(): Promise<void> {
         ghl_label TEXT,
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS maid_central_customers (
+        id SERIAL PRIMARY KEY,
+        maid_central_id TEXT UNIQUE NOT NULL,
+        ghl_contact_id TEXT,
+        sync_status TEXT,
+        last_synced_at TIMESTAMP,
+        data JSONB,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS maid_central_services (
+        id SERIAL PRIMARY KEY,
+        maid_central_id TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT,
+        price DECIMAL,
+        duration INTEGER,
+        ghl_product_id TEXT,
+        data JSONB,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS webhook_configs (
+        id SERIAL PRIMARY KEY,
+        event_type TEXT NOT NULL,
+        webhook_url TEXT NOT NULL,
+        enabled BOOLEAN DEFAULT true,
+        secret_token TEXT,
+        headers JSONB,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS webhook_events (
+        id SERIAL PRIMARY KEY,
+        event_type TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        payload JSONB,
+        delivery_status TEXT,
+        delivery_attempts INTEGER DEFAULT 0,
+        last_attempt_at TIMESTAMP,
+        error_message TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
       )
     `;
 
@@ -251,10 +333,24 @@ export async function storeIntegrationConfig(config: IntegrationConfig): Promise
     SELECT id FROM integration_config LIMIT 1
   `;
   
+  // Handle tags: convert array to JSON string, or use single tag for backward compatibility
+  const ghlTagsJson = config.ghlTags ? JSON.stringify(config.ghlTags) : null;
+  const ghlTagSingle = config.ghlTag || (config.ghlTags && config.ghlTags.length > 0 ? config.ghlTags[0] : null);
+
   if (configExists.length === 0) {
     await sql`
-      INSERT INTO integration_config (ghl_location_id, enabled)
-      VALUES (${config.ghlLocationId || null}, ${config.enabled})
+      INSERT INTO integration_config (ghl_location_id, enabled, ghl_tag, ghl_tags, sync_quotes, sync_customers, create_opportunities, auto_create_fields, custom_field_prefix)
+      VALUES (
+        ${config.ghlLocationId || null}, 
+        ${config.enabled}, 
+        ${ghlTagSingle || null},
+        ${ghlTagsJson || null},
+        ${config.syncQuotes !== undefined ? config.syncQuotes : true},
+        ${config.syncCustomers !== undefined ? config.syncCustomers : false},
+        ${config.createOpportunities !== undefined ? config.createOpportunities : true},
+        ${config.autoCreateFields !== undefined ? config.autoCreateFields : true},
+        ${config.customFieldPrefix || 'maidcentral_quote_'}
+      )
     `;
   } else {
     await sql`
@@ -262,6 +358,13 @@ export async function storeIntegrationConfig(config: IntegrationConfig): Promise
       SET 
         ghl_location_id = ${config.ghlLocationId || null},
         enabled = ${config.enabled},
+        ghl_tag = ${ghlTagSingle || null},
+        ghl_tags = ${ghlTagsJson || null},
+        sync_quotes = ${config.syncQuotes !== undefined ? config.syncQuotes : true},
+        sync_customers = ${config.syncCustomers !== undefined ? config.syncCustomers : false},
+        create_opportunities = ${config.createOpportunities !== undefined ? config.createOpportunities : true},
+        auto_create_fields = ${config.autoCreateFields !== undefined ? config.autoCreateFields : true},
+        custom_field_prefix = ${config.customFieldPrefix || 'maidcentral_quote_'},
         updated_at = NOW()
       WHERE id = ${configExists[0].id}
     `;
@@ -276,23 +379,59 @@ export async function getIntegrationConfig(): Promise<IntegrationConfig | null> 
   const sql = getSql();
   
   const result = await sql`
-    SELECT ghl_location_id, enabled
+    SELECT ghl_location_id, enabled, ghl_tag, ghl_tags, sync_quotes, sync_customers, create_opportunities, auto_create_fields, custom_field_prefix
     FROM integration_config
     LIMIT 1
   `;
 
-  if (result.length === 0) {
-    return { fieldMappings: [], enabled: false };
-  }
+    if (result.length === 0) {
+      return { 
+        fieldMappings: [], 
+        enabled: false,
+        syncQuotes: true,
+        syncCustomers: false,
+        createOpportunities: true,
+        autoCreateFields: true,
+        customFieldPrefix: 'maidcentral_quote_',
+      };
+    }
 
-  const row = result[0];
-  const fieldMappings = await getFieldMappings();
+    const row = result[0];
+    const fieldMappings = await getFieldMappings();
 
-  return {
-    ghlLocationId: row.ghl_location_id as string | undefined,
-    enabled: row.enabled as boolean,
-    fieldMappings,
-  };
+    // Handle missing columns gracefully for backward compatibility
+    const syncQuotes = row.sync_quotes !== undefined && row.sync_quotes !== null ? row.sync_quotes as boolean : true;
+    const syncCustomers = row.sync_customers !== undefined && row.sync_customers !== null ? row.sync_customers as boolean : false;
+    const createOpportunities = (row.create_opportunities !== undefined && row.create_opportunities !== null) ? row.create_opportunities as boolean : true;
+    const autoCreateFields = row.auto_create_fields !== undefined && row.auto_create_fields !== null ? row.auto_create_fields as boolean : true;
+    const customFieldPrefix = (row.custom_field_prefix as string | undefined) || 'maidcentral_quote_';
+
+    // Handle tags: support both old single tag (ghl_tag) and new multiple tags (ghl_tags as JSON)
+    let ghlTags: string[] | undefined;
+    if (row.ghl_tags) {
+      try {
+        ghlTags = JSON.parse(row.ghl_tags as string);
+      } catch {
+        // If JSON parsing fails, treat as single tag
+        ghlTags = [row.ghl_tags as string];
+      }
+    } else if (row.ghl_tag) {
+      // Backward compatibility: convert single tag to array
+      ghlTags = [row.ghl_tag as string];
+    }
+
+    return {
+      ghlLocationId: row.ghl_location_id as string | undefined,
+      enabled: row.enabled as boolean,
+      ghlTag: row.ghl_tag as string | undefined, // Keep for backward compatibility
+      ghlTags, // New multiple tags array
+      syncQuotes,
+      syncCustomers,
+      createOpportunities,
+      autoCreateFields,
+      customFieldPrefix,
+      fieldMappings,
+    };
 }
 
 // Field Mappings

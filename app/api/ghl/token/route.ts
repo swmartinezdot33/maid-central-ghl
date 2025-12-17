@@ -27,6 +27,11 @@ export async function POST(request: NextRequest) {
     const config = existingConfig || {
       fieldMappings: [],
       enabled: false,
+      syncQuotes: true,
+      syncCustomers: false,
+      createOpportunities: true,
+      autoCreateFields: true,
+      customFieldPrefix: 'maidcentral_quote_',
     };
     
     config.ghlLocationId = locationId;

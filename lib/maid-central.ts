@@ -167,20 +167,127 @@ export class MaidCentralAPI {
         },
         params,
       });
+      // Check if response is HTML (404 page)
+      const contentType = response.headers['content-type'] || '';
+      if (contentType.includes('text/html')) {
+        console.error('[Maid Central API] Quotes endpoint returned HTML (404). API endpoint may not exist.');
+        return [];
+      }
+      
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        if (error.response?.status === 401) {
+          const newToken = await this.refreshToken();
+          const response = await axios.get(`${MAID_CENTRAL_API_BASE_URL}/quotes`, {
+            headers: {
+              Authorization: `Bearer ${newToken}`,
+            },
+            params,
+          });
+          
+          // Check if response is HTML (404 page)
+          const contentType = response.headers['content-type'] || '';
+          if (contentType.includes('text/html')) {
+            console.error('[Maid Central API] Quotes endpoint returned HTML (404). API endpoint may not exist.');
+            return [];
+          }
+          
+          return response.data;
+        }
+        
+        // Handle 404 or HTML responses (Maid Central returns HTML 404 pages)
+        const contentType = error.response?.headers['content-type'] || '';
+        if (error.response?.status === 404 || contentType.includes('text/html')) {
+          console.error('[Maid Central API] Quotes endpoint not found (404). The /quotes endpoint may not exist in Maid Central API.');
+          console.error('[Maid Central API] Please check the Maid Central API documentation for the correct endpoint.');
+          return []; // Return empty array instead of throwing
+        }
+        
+        console.error('[Maid Central API] Error fetching quotes:', error.response?.status, error.response?.statusText);
+        throw new Error(`Failed to fetch quotes: ${error.response?.status} - ${error.response?.statusText || error.message}`);
+      }
+      throw error;
+    }
+  }
+
+  async createQuote(quoteData: any): Promise<any> {
+    const token = await this.getAuthHeader();
+    
+    try {
+      const response = await axios.post(`${MAID_CENTRAL_API_BASE_URL}/quotes`, quoteData, {
+        headers: {
+          Authorization: token,
+          'Content-Type': 'application/json',
+        },
+      });
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 401) {
         const newToken = await this.refreshToken();
-        const response = await axios.get(`${MAID_CENTRAL_API_BASE_URL}/quotes`, {
+        const response = await axios.post(`${MAID_CENTRAL_API_BASE_URL}/quotes`, quoteData, {
           headers: {
             Authorization: `Bearer ${newToken}`,
+            'Content-Type': 'application/json',
           },
-          params,
         });
         return response.data;
       }
       throw error;
     }
+  }
+
+  async updateQuote(quoteId: string | number, quoteData: any): Promise<any> {
+    const token = await this.getAuthHeader();
+    
+    try {
+      const response = await axios.put(`${MAID_CENTRAL_API_BASE_URL}/quotes/${quoteId}`, quoteData, {
+        headers: {
+          Authorization: token,
+          'Content-Type': 'application/json',
+        },
+      });
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        const newToken = await this.refreshToken();
+        const response = await axios.put(`${MAID_CENTRAL_API_BASE_URL}/quotes/${quoteId}`, quoteData, {
+          headers: {
+            Authorization: `Bearer ${newToken}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        return response.data;
+      }
+      throw error;
+    }
+  }
+
+  async deleteQuote(quoteId: string | number): Promise<void> {
+    const token = await this.getAuthHeader();
+    
+    try {
+      await axios.delete(`${MAID_CENTRAL_API_BASE_URL}/quotes/${quoteId}`, {
+        headers: {
+          Authorization: token,
+        },
+      });
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        const newToken = await this.refreshToken();
+        await axios.delete(`${MAID_CENTRAL_API_BASE_URL}/quotes/${quoteId}`, {
+          headers: {
+            Authorization: `Bearer ${newToken}`,
+          },
+        });
+        return;
+      }
+      throw error;
+    }
+  }
+
+  async updateQuoteStatus(quoteId: string | number, status: string): Promise<any> {
+    return this.updateQuote(quoteId, { status });
   }
 
   // Get available fields from a quote for mapping

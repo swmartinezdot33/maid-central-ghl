@@ -21,6 +21,7 @@ interface Config {
   enabled: boolean;
   ghlLocationId?: string;
   fieldMappings: FieldMapping[];
+  ghlTag?: string;
 }
 
 export default function MappingPage() {
@@ -192,8 +193,22 @@ export default function MappingPage() {
       });
 
       if (response.ok) {
-        setMessage({ type: 'success', text: 'Field mappings saved successfully!' });
-        setMappings(validMappings);
+        // Also save the tag configuration
+        const configResponse = await fetch('/api/config', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            ghlTag: config?.ghlTag || undefined,
+          }),
+        });
+
+        if (configResponse.ok) {
+          setMessage({ type: 'success', text: 'Field mappings and tag configuration saved successfully!' });
+          setMappings(validMappings);
+        } else {
+          setMessage({ type: 'success', text: 'Field mappings saved, but tag configuration failed to save.' });
+          setMappings(validMappings);
+        }
       } else {
         const data = await response.json();
         setMessage({ type: 'error', text: data.error || 'Failed to save mappings' });
@@ -210,7 +225,10 @@ export default function MappingPage() {
       const response = await fetch('/api/config', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled }),
+        body: JSON.stringify({ 
+          enabled,
+          ghlTag: config?.ghlTag || undefined,
+        }),
       });
 
       if (response.ok) {
@@ -260,8 +278,32 @@ export default function MappingPage() {
           </label>
         </div>
         <p style={{ color: '#666', fontSize: '0.9rem' }}>
-          {config?.enabled ? 'Integration is enabled and will process webhooks.' : 'Integration is disabled.'}
+                  {config?.enabled ? 'Integration is enabled and ready to sync quotes manually.' : 'Integration is disabled.'}
         </p>
+      </div>
+
+      <div className="section">
+        <h2 className="section-title">GHL Tag Configuration</h2>
+        <p style={{ marginBottom: '1rem', color: '#666', fontSize: '0.9rem' }}>
+          When a new quote is synced, this tag will be automatically added to the contact in GoHighLevel.
+        </p>
+        <div className="form-group" style={{ maxWidth: '400px' }}>
+          <label htmlFor="ghlTag">Tag Name</label>
+          <input
+            type="text"
+            id="ghlTag"
+            value={config?.ghlTag || ''}
+            onChange={(e) => {
+              const updatedConfig = { ...config, ghlTag: e.target.value };
+              setConfig(updatedConfig as Config);
+            }}
+            placeholder="e.g., Maid Central Quote"
+            style={{ marginBottom: '0.5rem' }}
+          />
+          <p style={{ fontSize: '0.85rem', color: '#666' }}>
+            Leave empty to skip tagging. The tag will be created in GHL if it doesn't exist.
+          </p>
+        </div>
       </div>
 
       <div className="section">

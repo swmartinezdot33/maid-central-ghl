@@ -8,7 +8,17 @@ export async function GET(request: NextRequest) {
     const ghlToken = await getGHLPrivateToken();
     
     return NextResponse.json({
-      config: config || { fieldMappings: [], enabled: false },
+      config: config || { 
+        fieldMappings: [], 
+        enabled: false, 
+        ghlTag: undefined,
+        ghlTags: undefined,
+        syncQuotes: true,
+        syncCustomers: false,
+        createOpportunities: true,
+        autoCreateFields: true,
+        customFieldPrefix: 'maidcentral_quote_',
+      },
       ghlConnected: !!ghlToken,
       hasLocationId: !!config?.ghlLocationId,
     });
