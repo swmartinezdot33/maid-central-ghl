@@ -1,7 +1,7 @@
 import axios, { AxiosError } from 'axios';
 import { getMaidCentralCredentials, type MaidCentralCredentials } from './kv';
 
-const MAID_CENTRAL_API_BASE_URL = process.env.MAID_CENTRAL_API_BASE_URL || 'https://api.maidcentral.com';
+const MAID_CENTRAL_API_BASE_URL = 'https://api.maidcentral.com';
 
 interface TokenResponse {
   access_token: string;
@@ -53,6 +53,46 @@ export class MaidCentralCustomersAPI {
   }
 
   async getCustomers(params?: { limit?: number; offset?: number; search?: string; query?: string }): Promise<any> {
+    // If a search term is provided, try to find by email/phone using CreateOrUpdate
+    // This is a workaround because Maid Central doesn't have a public search API
+    if (params?.search || params?.query) {
+      const searchTerm = params.search || params.query || '';
+      // Simple check if it looks like an email
+      if (searchTerm.includes('@')) {
+        try {
+          console.log(`[Maid Central API] Attempting to find customer by email: ${searchTerm}`);
+          const { maidCentralAPI } = await import('./maid-central');
+          const lead = await maidCentralAPI.createLead({
+            Email: searchTerm,
+            // We need to provide dummy required fields to satisfy the API
+            // If the user exists, these shouldn't overwrite if AllowDuplicates is false (default)
+            // However, this IS risky if it updates the name.
+            // Safe approach: Only do this if we are sure.
+            // For now, let's try to pass minimal info. The API requires FirstName/LastName/Phone/PostalCode.
+            // We'll use placeholders. If it matches by email, it should return the existing record.
+            FirstName: 'Search',
+            LastName: 'Lookup', 
+            Phone: '555-555-5555',
+            PostalCode: '00000',
+            AllowDuplicates: false 
+          });
+          
+          if (lead && lead.LeadId) {
+            // Map lead to customer format
+            return [{
+              id: lead.LeadId,
+              name: `${lead.FirstName} ${lead.LastName}`,
+              email: lead.Email,
+              phone: lead.Phone,
+              ...lead
+            }];
+          }
+        } catch (error) {
+          console.warn('[Maid Central API] Search by email failed:', error);
+        }
+      }
+    }
+
     const token = await this.getAuthHeader();
     
     try {

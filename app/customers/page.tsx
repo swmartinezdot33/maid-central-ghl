@@ -13,91 +13,82 @@ interface Customer {
 }
 
 export default function CustomersPage() {
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [allCustomers, setAllCustomers] = useState<Customer[]>([]); // Store all customers for client-side filtering
-  const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [syncing, setSyncing] = useState<Record<string, boolean>>({});
+  const [loading, setLoading] = useState(false);
+  const [lookupId, setLookupId] = useState('');
+  const [foundCustomer, setFoundCustomer] = useState<Customer | null>(null);
+  const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
+  // We don't load all customers on mount anymore
   useEffect(() => {
-    loadAllCustomers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Optional: Check if we have a customer ID in URL params to auto-load
+    // const params = new URLSearchParams(window.location.search);
+    // const id = params.get('id');
+    // if (id) handleLookup(id);
   }, []);
 
-  // Filter customers client-side when search query changes
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      setCustomers(allCustomers);
-      return;
-    }
+  const handleLookup = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!lookupId.trim()) return;
 
-    const searchLower = searchQuery.toLowerCase();
-    const filtered = allCustomers.filter((customer) => {
-      const name = (customer.name || customer.customerName || '').toLowerCase();
-      const email = (customer.email || customer.customerEmail || '').toLowerCase();
-      const phone = (customer.phone || customer.customerPhone || '').toLowerCase();
-      const id = String(customer.id || '').toLowerCase();
-      const address = (customer.address || '').toLowerCase();
-      
-      return name.includes(searchLower) || 
-             email.includes(searchLower) || 
-             phone.includes(searchLower) ||
-             id.includes(searchLower) ||
-             address.includes(searchLower);
-    });
-    
-    setCustomers(filtered);
-  }, [searchQuery, allCustomers]);
-
-  const loadAllCustomers = async () => {
     try {
       setLoading(true);
       setMessage(null);
-      const response = await fetch('/api/maid-central/customers');
+      setFoundCustomer(null);
+
+      // Using the Lead endpoint which returns customer info
+      // Since we don't have a direct /customers/{id} endpoint confirmed working other than via Lead
+      // We'll try our internal API which wraps the logic
+      // If it looks like an email, use the search param
+      let url = `/api/maid-central/customers/${lookupId}`;
+      if (lookupId.includes('@')) {
+        url = `/api/maid-central/customers?search=${encodeURIComponent(lookupId)}`;
+      }
+      
+      const response = await fetch(url);
       const data = await response.json();
       
-      if (response.ok) {
-        const customerArray = Array.isArray(data) ? data : (data.data || data.customers || []);
-        setAllCustomers(customerArray);
-        setCustomers(customerArray);
+      if (response.ok && data) {
+        // Normalize data structure
+        // If searching by email, it returns an array
+        const customer = Array.isArray(data) ? data[0] : data;
         
-        if (customerArray.length === 0) {
-          setMessage({ 
-            type: 'error', 
-            text: 'No customers found. The Maid Central API /customers endpoint may not exist. Please check the API documentation for the correct endpoint.' 
-          });
+        if (!customer) {
+           setMessage({ type: 'error', text: 'Customer not found. Please check the email or ID.' });
+           return;
         }
+
+        setFoundCustomer({
+          id: customer.LeadId || customer.id || lookupId,
+          name: customer.FirstName && customer.LastName ? `${customer.FirstName} ${customer.LastName}` : (customer.name || 'Unknown'),
+          email: customer.Email || customer.email,
+          phone: customer.Phone || customer.phone,
+          address: customer.HomeAddress1 || customer.address,
+          ...customer
+        });
+        setMessage({ type: 'success', text: 'Customer found!' });
       } else {
-        setMessage({ type: 'error', text: data.error || 'Failed to load customers' });
+        setMessage({ type: 'error', text: data.error || 'Customer not found. Please check the ID or Email.' });
       }
     } catch (error) {
-      console.error('Error loading customers:', error);
-      setMessage({ type: 'error', text: 'Failed to load customers. Please check your Maid Central credentials and API endpoints.' });
-      setAllCustomers([]);
-      setCustomers([]);
+      console.error('Error looking up customer:', error);
+      setMessage({ type: 'error', text: 'Failed to lookup customer. Please try again.' });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    // Search is handled by useEffect, but we can trigger a reload if needed
-    if (!searchQuery.trim()) {
-      loadAllCustomers();
-    }
-  };
-
-  const syncCustomerToGHL = async (customerId: string) => {
-    setSyncing(prev => ({ ...prev, [customerId]: true }));
+  const syncCustomerToGHL = async () => {
+    if (!foundCustomer) return;
+    
+    setSyncing(true);
     setMessage(null);
 
     try {
       const response = await fetch('/api/sync/customer-to-ghl', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customerId }),
+        body: JSON.stringify({ customerId: foundCustomer.id }),
       });
 
       const data = await response.json();
@@ -105,7 +96,7 @@ export default function CustomersPage() {
       if (response.ok) {
         setMessage({ 
           type: 'success', 
-          text: `Customer ${customerId} synced to GoHighLevel successfully! Contact ID: ${data.contactId || 'N/A'}` 
+          text: `Customer synced to GoHighLevel successfully! Contact ID: ${data.contactId || 'N/A'}` 
         });
       } else {
         setMessage({ type: 'error', text: data.error || 'Failed to sync customer to GHL' });
@@ -114,109 +105,114 @@ export default function CustomersPage() {
       console.error('Error syncing customer:', error);
       setMessage({ type: 'error', text: 'Failed to sync customer to GHL' });
     } finally {
-      setSyncing(prev => ({ ...prev, [customerId]: false }));
+      setSyncing(false);
     }
   };
 
   return (
     <div className="container">
       <div className="header">
-        <h1>Maid Central Customers</h1>
-        <p>Manage and view your Maid Central customers</p>
+        <h1>Customer Lookup</h1>
+        <p>Lookup a Maid Central customer by Lead ID to view or sync to GoHighLevel.</p>
+      </div>
+
+      <div style={{ marginBottom: '2rem' }}>
+        <Link href="/" className="btn" style={{ backgroundColor: '#e0e0e0' }}>
+          ← Back to Home
+        </Link>
       </div>
 
       {message && (
-        <div className={`alert alert-${message.type}`}>
+        <div className={`alert alert-${message.type}`} style={{ 
+          padding: '1rem', 
+          marginBottom: '1rem', 
+          borderRadius: '4px',
+          backgroundColor: message.type === 'error' ? '#fee2e2' : message.type === 'success' ? '#dcfce7' : '#e0f2fe',
+          color: message.type === 'error' ? '#991b1b' : message.type === 'success' ? '#166534' : '#075985'
+        }}>
           {message.text}
         </div>
       )}
 
       <div className="section">
-        <div className="flex-between mb-2">
-          <h2 className="section-title">Customers</h2>
-          <Link href="/" className="btn" style={{ backgroundColor: '#e0e0e0' }}>
-            ← Back to Home
-          </Link>
-        </div>
+        <h2 className="section-title">Lookup Customer</h2>
+        <form onSubmit={handleLookup} style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', marginBottom: '2rem' }}>
+          <div style={{ flex: 1 }}>
+            <label htmlFor="lookupId" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+              Find by Email or Lead ID
+            </label>
+            <input
+              id="lookupId"
+              type="text"
+              placeholder="Enter Email Address or Lead ID"
+              value={lookupId}
+              onChange={(e) => setLookupId(e.target.value)}
+              style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid #ddd' }}
+            />
+          </div>
+          <button 
+            type="submit" 
+            disabled={loading || !lookupId.trim()}
+            className="btn btn-primary"
+            style={{ height: '46px', backgroundColor: '#2563eb', color: 'white' }}
+          >
+            {loading ? 'Searching...' : 'Find Customer'}
+          </button>
+        </form>
 
-        <div className="mb-2" style={{ display: 'flex', gap: '0.5rem' }}>
-          <input
-            type="text"
-            placeholder="Search customers by name, email, phone, or ID..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ flex: 1, padding: '0.5rem', borderRadius: '4px', border: '1px solid #ddd' }}
-          />
-          <button 
-            type="button" 
-            onClick={() => { 
-              setSearchQuery(''); 
-              setCustomers(allCustomers);
-            }} 
-            className="btn"
-            disabled={!searchQuery}
-          >
-            Clear
-          </button>
-          <button 
-            type="button" 
-            onClick={loadAllCustomers} 
-            className="btn btn-secondary"
-            title="Reload all customers"
-          >
-            Refresh
-          </button>
-        </div>
-        
-        {searchQuery && (
-          <p style={{ marginBottom: '1rem', fontSize: '0.9rem', color: '#666' }}>
-            Showing {customers.length} of {allCustomers.length} customers matching "{searchQuery}"
-          </p>
+        {foundCustomer && (
+          <div style={{ border: '1px solid #ddd', borderRadius: '8px', padding: '1.5rem', backgroundColor: '#f9fafb' }}>
+            <h3 style={{ marginTop: 0, borderBottom: '1px solid #eee', paddingBottom: '0.5rem', marginBottom: '1rem' }}>
+              Customer Details
+            </h3>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+              <div>
+                <strong style={{ display: 'block', color: '#666', fontSize: '0.9rem' }}>Name</strong>
+                <div style={{ fontSize: '1.1rem' }}>{foundCustomer.name}</div>
+              </div>
+              <div>
+                <strong style={{ display: 'block', color: '#666', fontSize: '0.9rem' }}>Email</strong>
+                <div>{foundCustomer.email || 'N/A'}</div>
+              </div>
+              <div>
+                <strong style={{ display: 'block', color: '#666', fontSize: '0.9rem' }}>Phone</strong>
+                <div>{foundCustomer.phone || 'N/A'}</div>
+              </div>
+              <div>
+                <strong style={{ display: 'block', color: '#666', fontSize: '0.9rem' }}>Lead ID</strong>
+                <div style={{ fontFamily: 'monospace' }}>{foundCustomer.id}</div>
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <strong style={{ display: 'block', color: '#666', fontSize: '0.9rem' }}>Address</strong>
+                <div>{foundCustomer.address || 'N/A'}</div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={syncCustomerToGHL}
+                disabled={syncing}
+                className="btn"
+                style={{ 
+                  backgroundColor: syncing ? '#9ca3af' : '#16a34a', 
+                  color: 'white',
+                  padding: '0.75rem 1.5rem',
+                  fontSize: '1rem'
+                }}
+              >
+                {syncing ? 'Syncing...' : 'Sync to GoHighLevel'}
+              </button>
+            </div>
+          </div>
         )}
-
-        {loading ? (
-          <p>Loading customers...</p>
-        ) : customers.length === 0 ? (
-          <p style={{ color: '#666', fontStyle: 'italic' }}>No customers found.</p>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ borderBottom: '2px solid #ddd' }}>
-                  <th style={{ padding: '0.75rem', textAlign: 'left' }}>Name</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'left' }}>Email</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'left' }}>Phone</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'left' }}>Address</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'left' }}>ID</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'left' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {customers.map((customer) => (
-                  <tr key={customer.id} style={{ borderBottom: '1px solid #eee' }}>
-                    <td style={{ padding: '0.75rem' }}>{customer.name || customer.customerName || '-'}</td>
-                    <td style={{ padding: '0.75rem' }}>{customer.email || customer.customerEmail || '-'}</td>
-                    <td style={{ padding: '0.75rem' }}>{customer.phone || customer.customerPhone || '-'}</td>
-                    <td style={{ padding: '0.75rem' }}>{customer.address || '-'}</td>
-                    <td style={{ padding: '0.75rem', fontFamily: 'monospace', fontSize: '0.85rem' }}>{customer.id}</td>
-                    <td style={{ padding: '0.75rem' }}>
-                      <button
-                        onClick={() => syncCustomerToGHL(customer.id)}
-                        disabled={syncing[customer.id]}
-                        className="btn btn-primary btn-small"
-                        style={{ 
-                          fontSize: '0.85rem',
-                          padding: '0.4rem 0.8rem',
-                          backgroundColor: syncing[customer.id] ? '#999' : '#2563eb'
-                        }}
-                      >
-                        {syncing[customer.id] ? 'Syncing...' : 'Sync to GHL'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        
+        {!foundCustomer && !loading && (
+          <div style={{ padding: '2rem', textAlign: 'center', color: '#666', backgroundColor: '#f9f9f9', borderRadius: '8px' }}>
+            <p>Enter an Email Address or Lead ID above to find a customer.</p>
+            <p style={{ fontSize: '0.85rem', marginTop: '0.5rem' }}>
+              Note: Searching by email will attempt to find an existing customer in Maid Central.
+            </p>
           </div>
         )}
       </div>

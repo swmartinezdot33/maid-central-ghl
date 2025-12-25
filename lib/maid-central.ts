@@ -1,7 +1,7 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import { getMaidCentralCredentials, storeMaidCentralCredentials, type MaidCentralCredentials } from './kv';
 
-const MAID_CENTRAL_API_BASE_URL = process.env.MAID_CENTRAL_API_BASE_URL || 'https://api.maidcentral.com';
+const MAID_CENTRAL_API_BASE_URL = 'https://api.maidcentral.com';
 
 // Create axios instance with timeout and retry configuration
 const createAxiosInstance = (): AxiosInstance => {
@@ -132,90 +132,16 @@ export class MaidCentralAPI {
     return `Bearer ${token}`;
   }
 
-  async getQuote(quoteId: string | number): Promise<any> {
-    const token = await this.getAuthHeader();
-    
-    try {
-      const response = await axios.get(`${MAID_CENTRAL_API_BASE_URL}/quotes/${quoteId}`, {
-        headers: {
-          Authorization: token,
-        },
-      });
-      return response.data;
-    } catch (error) {
-      if (axios.isAxiosError(error) && error.response?.status === 401) {
-        // Token expired, refresh and retry
-        const newToken = await this.refreshToken();
-        const response = await axios.get(`${MAID_CENTRAL_API_BASE_URL}/quotes/${quoteId}`, {
-          headers: {
-            Authorization: `Bearer ${newToken}`,
-          },
-        });
-        return response.data;
-      }
-      throw error;
-    }
-  }
+  // ===== MaidCentral Lead / Quote / Booking (new Lead API) =====
+  // NOTE: These use the documented /api/Lead/... endpoints
 
-  async getQuotes(params?: { limit?: number; offset?: number; status?: string }): Promise<any> {
+  // Create or update a Lead (Step 1)
+  async createLead(leadPayload: any): Promise<any> {
     const token = await this.getAuthHeader();
     
+    const url = `${MAID_CENTRAL_API_BASE_URL}/api/Lead/CreateOrUpdate`;
     try {
-      const response = await axios.get(`${MAID_CENTRAL_API_BASE_URL}/quotes`, {
-        headers: {
-          Authorization: token,
-        },
-        params,
-      });
-      // Check if response is HTML (404 page)
-      const contentType = response.headers['content-type'] || '';
-      if (contentType.includes('text/html')) {
-        console.error('[Maid Central API] Quotes endpoint returned HTML (404). API endpoint may not exist.');
-        return [];
-      }
-      
-      return response.data;
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        if (error.response?.status === 401) {
-          const newToken = await this.refreshToken();
-          const response = await axios.get(`${MAID_CENTRAL_API_BASE_URL}/quotes`, {
-            headers: {
-              Authorization: `Bearer ${newToken}`,
-            },
-            params,
-          });
-          
-          // Check if response is HTML (404 page)
-          const contentType = response.headers['content-type'] || '';
-          if (contentType.includes('text/html')) {
-            console.error('[Maid Central API] Quotes endpoint returned HTML (404). API endpoint may not exist.');
-            return [];
-          }
-          
-          return response.data;
-        }
-        
-        // Handle 404 or HTML responses (Maid Central returns HTML 404 pages)
-        const contentType = error.response?.headers['content-type'] || '';
-        if (error.response?.status === 404 || contentType.includes('text/html')) {
-          console.error('[Maid Central API] Quotes endpoint not found (404). The /quotes endpoint may not exist in Maid Central API.');
-          console.error('[Maid Central API] Please check the Maid Central API documentation for the correct endpoint.');
-          return []; // Return empty array instead of throwing
-        }
-        
-        console.error('[Maid Central API] Error fetching quotes:', error.response?.status, error.response?.statusText);
-        throw new Error(`Failed to fetch quotes: ${error.response?.status} - ${error.response?.statusText || error.message}`);
-      }
-      throw error;
-    }
-  }
-
-  async createQuote(quoteData: any): Promise<any> {
-    const token = await this.getAuthHeader();
-    
-    try {
-      const response = await axios.post(`${MAID_CENTRAL_API_BASE_URL}/quotes`, quoteData, {
+      const response = await axios.post(url, leadPayload, {
         headers: {
           Authorization: token,
           'Content-Type': 'application/json',
@@ -225,7 +151,7 @@ export class MaidCentralAPI {
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 401) {
         const newToken = await this.refreshToken();
-        const response = await axios.post(`${MAID_CENTRAL_API_BASE_URL}/quotes`, quoteData, {
+        const response = await axios.post(url, leadPayload, {
           headers: {
             Authorization: `Bearer ${newToken}`,
             'Content-Type': 'application/json',
@@ -237,11 +163,41 @@ export class MaidCentralAPI {
     }
   }
 
-  async updateQuote(quoteId: string | number, quoteData: any): Promise<any> {
+  // Get a Lead (includes quote and booking information)
+  // Reference: https://support.maidcentral.com/apidocs/gets-a-lead-3
+  async getLead(leadId: string | number): Promise<any> {
     const token = await this.getAuthHeader();
+    const url = `${MAID_CENTRAL_API_BASE_URL}/api/Lead/Lead?leadId=${leadId}`;
     
     try {
-      const response = await axios.put(`${MAID_CENTRAL_API_BASE_URL}/quotes/${quoteId}`, quoteData, {
+      const response = await axios.get(url, {
+        headers: {
+          Authorization: token,
+        },
+      });
+      return response.data?.Result || response.data?.data || response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        const newToken = await this.refreshToken();
+        const response = await axios.get(url, {
+          headers: {
+            Authorization: `Bearer ${newToken}`,
+          },
+        });
+        return response.data?.Result || response.data?.data || response.data;
+      }
+      console.error('[Maid Central API] Error fetching lead:', error);
+      throw error;
+    }
+  }
+
+  // Create or update a Quote for a Lead (Step 2)
+  async createOrUpdateQuote(quotePayload: any): Promise<any> {
+    const token = await this.getAuthHeader();
+    
+    const url = `${MAID_CENTRAL_API_BASE_URL}/api/Lead/CreateOrUpdateQuote`;
+    try {
+      const response = await axios.post(url, quotePayload, {
         headers: {
           Authorization: token,
           'Content-Type': 'application/json',
@@ -251,7 +207,7 @@ export class MaidCentralAPI {
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 401) {
         const newToken = await this.refreshToken();
-        const response = await axios.put(`${MAID_CENTRAL_API_BASE_URL}/quotes/${quoteId}`, quoteData, {
+        const response = await axios.post(url, quotePayload, {
           headers: {
             Authorization: `Bearer ${newToken}`,
             'Content-Type': 'application/json',
@@ -263,77 +219,282 @@ export class MaidCentralAPI {
     }
   }
 
-  async deleteQuote(quoteId: string | number): Promise<void> {
+  // Calculate price without creating a Lead (can be used in Step 1/2 for real-time pricing)
+  async calculatePrice(pricePayload: any): Promise<any> {
     const token = await this.getAuthHeader();
-    
+    const url = `${MAID_CENTRAL_API_BASE_URL}/api/Lead/CalculatePrice`;
+
     try {
-      await axios.delete(`${MAID_CENTRAL_API_BASE_URL}/quotes/${quoteId}`, {
+      const response = await axios.post(url, pricePayload, {
         headers: {
           Authorization: token,
+          'Content-Type': 'application/json',
         },
       });
+      return response.data;
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 401) {
         const newToken = await this.refreshToken();
-        await axios.delete(`${MAID_CENTRAL_API_BASE_URL}/quotes/${quoteId}`, {
+        const response = await axios.post(url, pricePayload, {
           headers: {
             Authorization: `Bearer ${newToken}`,
+            'Content-Type': 'application/json',
           },
         });
-        return;
+        return response.data;
       }
       throw error;
     }
   }
 
-  async updateQuoteStatus(quoteId: string | number, status: string): Promise<any> {
-    return this.updateQuote(quoteId, { status });
+  // Booking creation for online booking widget (Step 3)
+  async createBooking(bookingPayload: any): Promise<any> {
+    const token = await this.getAuthHeader();
+    
+    const url = `${MAID_CENTRAL_API_BASE_URL}/api/Lead/BookQuote`;
+    try {
+      const response = await axios.post(url, bookingPayload, {
+        headers: {
+          Authorization: token,
+          'Content-Type': 'application/json',
+        },
+      });
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        const newToken = await this.refreshToken();
+        const response = await axios.post(url, bookingPayload, {
+          headers: {
+            Authorization: `Bearer ${newToken}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        return response.data;
+      }
+      throw error;
+    }
   }
 
   // Get available fields from a quote for mapping
   async getQuoteFields(): Promise<string[]> {
-    // Fetch a sample quote to determine available fields
-    try {
-      const quotes = await this.getQuotes({ limit: 1 });
-      if (quotes?.data?.length > 0) {
-        return Object.keys(quotes.data[0]);
+    // For the new MaidCentral Lead API, we don't yet have a simple "list quotes" endpoint.
+    // Instead of trying to infer fields dynamically, return a sensible default set that
+    // covers common quote properties. This keeps the field mapping UI working without
+    // depending on a deprecated /quotes endpoint.
+    return [
+      'LeadId',
+      'CustomerInformationId',
+      'HomeInformationId',
+      'FirstName',
+      'LastName',
+      'Email',
+      'Phone',
+      'PostalCode',
+      'StatusId',
+      'StatusName',
+      'MaidServiceQuoteUrl',
+      'HomeAddress1',
+      'HomeCity',
+      'HomeRegion',
+      'HomePostalCode',
+      'BillingAddress1',
+      'BillingCity',
+      'BillingRegion',
+      'BillingPostalCode',
+    ];
+  }
+
+  // ===== Appointment/Booking API Methods =====
+  // NOTE: Based on Maid Central API workflow, bookings are created via POST /api/Lead/BookQuote
+  // Booked quotes become appointments. We can retrieve them via:
+  // 1. Lead endpoint (GET /api/Lead/Lead?leadId={id}) - gets lead with quote/booking info
+  // 2. Separate Bookings endpoint (if available)
+  // References:
+  // - https://support.maidcentral.com/apidocs/online-booking-to-api-workflow
+  // - https://support.maidcentral.com/apidocs/one-page-maidcentral-api-workflow
+
+  async getAppointments(filters?: { startDate?: string; endDate?: string; status?: string; leadId?: string | number }): Promise<any[]> {
+    const token = await this.getAuthHeader();
+    
+    // Try multiple endpoint patterns since exact endpoint structure needs verification
+    const endpoints = [
+      `/api/Bookings`, // If separate Bookings endpoint exists
+      `/api/Lead/Bookings`, // If bookings are under Lead namespace
+      `/api/Appointments`, // Alternative naming
+    ];
+
+    const params: any = {};
+    if (filters?.startDate) params.startDate = filters.startDate;
+    if (filters?.endDate) params.endDate = filters.endDate;
+    if (filters?.status) params.status = filters.status;
+    if (filters?.leadId) params.leadId = filters.leadId;
+
+    let lastError: any = null;
+    
+    for (const endpoint of endpoints) {
+      try {
+        const url = `${MAID_CENTRAL_API_BASE_URL}${endpoint}`;
+        const response = await axios.get(url, {
+          headers: {
+            Authorization: token,
+          },
+          params,
+        });
+        const data = response.data?.Result || response.data?.data || response.data;
+        if (Array.isArray(data)) {
+          return data;
+        }
+        // If not array, continue to next endpoint
+      } catch (error) {
+        if (axios.isAxiosError(error)) {
+          // If 404, try next endpoint. If 401, refresh token and retry
+          if (error.response?.status === 401) {
+            try {
+              const newToken = await this.refreshToken();
+              const url = `${MAID_CENTRAL_API_BASE_URL}${endpoint}`;
+              const response = await axios.get(url, {
+                headers: {
+                  Authorization: `Bearer ${newToken}`,
+                },
+                params,
+              });
+              const data = response.data?.Result || response.data?.data || response.data;
+              if (Array.isArray(data)) {
+                return data;
+              }
+            } catch (retryError) {
+              lastError = retryError;
+              continue;
+            }
+          } else if (error.response?.status === 404) {
+            // Endpoint doesn't exist, try next one
+            lastError = error;
+            continue;
+          } else {
+            lastError = error;
+          }
+        } else {
+          lastError = error;
+        }
       }
-      // Return common fields if no quotes exist
-      return [
-        'id',
-        'quoteNumber',
-        'customerName',
-        'customerEmail',
-        'customerPhone',
-        'address',
-        'city',
-        'state',
-        'zipCode',
-        'serviceType',
-        'totalAmount',
-        'status',
-        'createdAt',
-        'updatedAt',
-      ];
-    } catch (error) {
-      // Return default fields if API call fails
-      return [
-        'id',
-        'quoteNumber',
-        'customerName',
-        'customerEmail',
-        'customerPhone',
-        'address',
-        'city',
-        'state',
-        'zipCode',
-        'serviceType',
-        'totalAmount',
-        'status',
-        'createdAt',
-        'updatedAt',
-      ];
     }
+
+    // If all endpoints failed, log and return empty array (graceful degradation)
+    console.warn('[Maid Central API] Could not find valid appointments endpoint. Tried:', endpoints);
+    console.warn('[Maid Central API] Last error:', lastError);
+    return [];
+  }
+
+  async getAppointment(appointmentId: string | number): Promise<any> {
+    const token = await this.getAuthHeader();
+    
+    // Try multiple endpoint patterns
+    const endpoints = [
+      `/api/Bookings/${appointmentId}`,
+      `/api/Lead/Bookings/${appointmentId}`,
+      `/api/Appointments/${appointmentId}`,
+    ];
+
+    let lastError: any = null;
+    
+    for (const endpoint of endpoints) {
+      try {
+        const url = `${MAID_CENTRAL_API_BASE_URL}${endpoint}`;
+        const response = await axios.get(url, {
+          headers: {
+            Authorization: token,
+          },
+        });
+        return response.data?.Result || response.data?.data || response.data;
+      } catch (error) {
+        if (axios.isAxiosError(error)) {
+          if (error.response?.status === 401) {
+            try {
+              const newToken = await this.refreshToken();
+              const url = `${MAID_CENTRAL_API_BASE_URL}${endpoint}`;
+              const response = await axios.get(url, {
+                headers: {
+                  Authorization: `Bearer ${newToken}`,
+                },
+              });
+              return response.data?.Result || response.data?.data || response.data;
+            } catch (retryError) {
+              lastError = retryError;
+              continue;
+            }
+          } else if (error.response?.status === 404) {
+            // Endpoint doesn't exist, try next one
+            lastError = error;
+            continue;
+          } else {
+            lastError = error;
+          }
+        } else {
+          lastError = error;
+        }
+      }
+    }
+
+    // If all endpoints failed, throw the last error
+    console.error('[Maid Central API] Could not find valid appointment endpoint for ID:', appointmentId);
+    throw lastError || new Error('Failed to fetch appointment from any known endpoint');
+  }
+
+  async updateAppointment(appointmentId: string | number, appointmentData: any): Promise<any> {
+    const token = await this.getAuthHeader();
+    
+    // Try multiple endpoint patterns
+    const endpoints = [
+      `/api/Bookings/${appointmentId}`,
+      `/api/Lead/Bookings/${appointmentId}`,
+      `/api/Appointments/${appointmentId}`,
+    ];
+
+    let lastError: any = null;
+    
+    for (const endpoint of endpoints) {
+      try {
+        const url = `${MAID_CENTRAL_API_BASE_URL}${endpoint}`;
+        const response = await axios.put(url, appointmentData, {
+          headers: {
+            Authorization: token,
+            'Content-Type': 'application/json',
+          },
+        });
+        return response.data?.Result || response.data?.data || response.data;
+      } catch (error) {
+        if (axios.isAxiosError(error)) {
+          if (error.response?.status === 401) {
+            try {
+              const newToken = await this.refreshToken();
+              const url = `${MAID_CENTRAL_API_BASE_URL}${endpoint}`;
+              const response = await axios.put(url, appointmentData, {
+                headers: {
+                  Authorization: `Bearer ${newToken}`,
+                  'Content-Type': 'application/json',
+                },
+              });
+              return response.data?.Result || response.data?.data || response.data;
+            } catch (retryError) {
+              lastError = retryError;
+              continue;
+            }
+          } else if (error.response?.status === 404) {
+            // Endpoint doesn't exist, try next one
+            lastError = error;
+            continue;
+          } else {
+            lastError = error;
+          }
+        } else {
+          lastError = error;
+        }
+      }
+    }
+
+    // If all endpoints failed, throw the last error
+    console.error('[Maid Central API] Could not find valid appointment update endpoint for ID:', appointmentId);
+    throw lastError || new Error('Failed to update appointment - endpoint not found');
   }
 }
 

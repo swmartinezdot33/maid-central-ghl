@@ -16,81 +16,82 @@ interface Quote {
 }
 
 export default function QuotesPage() {
-  const [quotes, setQuotes] = useState<Quote[]>([]);
-  const [allQuotes, setAllQuotes] = useState<Quote[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [syncing, setSyncing] = useState<Record<string, boolean>>({});
+  const [loading, setLoading] = useState(false);
+  const [lookupId, setLookupId] = useState('');
+  const [foundQuote, setFoundQuote] = useState<Quote | null>(null);
+  const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
+  // We don't load all quotes on mount anymore
   useEffect(() => {
-    loadQuotes();
+    // Optional: Check if we have a quote ID in URL params to auto-load
   }, []);
 
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      setQuotes(allQuotes);
-      return;
-    }
+  const handleLookup = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!lookupId.trim()) return;
 
-    const searchLower = searchQuery.toLowerCase();
-    const filtered = allQuotes.filter((quote) => {
-      const quoteNumber = String(quote.quoteNumber || quote.id || '').toLowerCase();
-      const customerName = (quote.customerName || '').toLowerCase();
-      const customerEmail = (quote.customerEmail || '').toLowerCase();
-      const customerPhone = (quote.customerPhone || '').toLowerCase();
-      const status = (quote.status || '').toLowerCase();
-      
-      return quoteNumber.includes(searchLower) || 
-             customerName.includes(searchLower) || 
-             customerEmail.includes(searchLower) ||
-             customerPhone.includes(searchLower) ||
-             status.includes(searchLower);
-    });
-    
-    setQuotes(filtered);
-  }, [searchQuery, allQuotes]);
-
-  const loadQuotes = async () => {
     try {
       setLoading(true);
       setMessage(null);
-      const response = await fetch('/api/maid-central/quotes');
-      const data = await response.json();
+      setFoundQuote(null);
 
-      if (response.ok) {
-        const quoteArray = Array.isArray(data) ? data : (data.data || data.quotes || []);
-        setAllQuotes(quoteArray);
-        setQuotes(quoteArray);
-        
-        if (quoteArray.length === 0) {
-          setMessage({ 
-            type: 'error', 
-            text: 'No quotes found. The Maid Central API /quotes endpoint may not exist. Please check the API documentation for the correct endpoint.' 
-          });
-        }
+      // Using the webhook/quote handler logic which actually fetches quote data via Lead API
+      // Since we don't have a direct public "get quote by ID" endpoint confirmed, 
+      // we rely on the fact that we can get Lead info which contains quote info.
+      // But wait, the previous diagnostics showed /api/Lead/Lead?leadId={id} works.
+      // A Quote ID is often a UUID in MC, while Lead ID is an int.
+      // If the user enters a Lead ID, we can find quotes.
+      
+      // Let's assume for now the user enters a Lead ID (since that's what we confirmed works)
+      // or we try to find a way to lookup by Quote ID.
+      // For now, let's treat the input as a Lead ID since that is the master record.
+      
+      const response = await fetch(`/api/maid-central/leads?leadId=${lookupId}`); 
+      // We need a GET route for leads. app/api/maid-central/leads/route.ts is POST only.
+      // Let's use the existing customer lookup which calls /api/Lead/Lead
+      
+      const customerResponse = await fetch(`/api/maid-central/customers/${lookupId}`);
+      const data = await customerResponse.json();
+      
+      if (customerResponse.ok && data) {
+        // The lead object contains quote info often
+        // Map it to our Quote interface
+        const quote: Quote = {
+          id: data.LeadId || data.id || lookupId,
+          quoteNumber: data.QuoteId || data.quoteNumber || 'N/A', // Assuming QuoteId might be in there
+          customerName: data.FirstName && data.LastName ? `${data.FirstName} ${data.LastName}` : (data.name || 'Unknown'),
+          customerEmail: data.Email || data.email,
+          customerPhone: data.Phone || data.phone,
+          totalAmount: data.Price || data.totalAmount || 0, // Placeholder
+          status: data.StatusName || data.status || 'N/A',
+          ...data
+        };
+        setFoundQuote(quote);
+        setMessage({ type: 'success', text: 'Lead/Quote record found!' });
       } else {
-        setMessage({ type: 'error', text: data.error || 'Failed to load quotes' });
+        setMessage({ type: 'error', text: data.error || 'Record not found. Please check the Lead ID.' });
       }
     } catch (error) {
-      console.error('Error loading quotes:', error);
-      setMessage({ type: 'error', text: 'Failed to load quotes. Please check your Maid Central credentials and API endpoints.' });
-      setAllQuotes([]);
-      setQuotes([]);
+      console.error('Error looking up quote:', error);
+      setMessage({ type: 'error', text: 'Failed to lookup record. Please try again.' });
     } finally {
       setLoading(false);
     }
   };
 
-  const syncQuoteToGHL = async (quoteId: string | number) => {
-    setSyncing(prev => ({ ...prev, [String(quoteId)]: true }));
+  const syncQuoteToGHL = async () => {
+    if (!foundQuote) return;
+    
+    setSyncing(true);
     setMessage(null);
 
     try {
+      // Use the webhook endpoint which handles the full sync logic including opportunities
       const response = await fetch('/api/webhook/quote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ quoteId }),
+        body: JSON.stringify({ quoteId: foundQuote.id }), // sending Lead ID as quoteId for now as fallback
       });
 
       const data = await response.json();
@@ -98,125 +99,131 @@ export default function QuotesPage() {
       if (response.ok) {
         setMessage({ 
           type: 'success', 
-          text: `Quote ${quoteId} synced to GoHighLevel successfully! Contact ID: ${data.contactId || 'N/A'}` 
+          text: `Synced to GoHighLevel successfully! Contact ID: ${data.contactId || 'N/A'}` 
         });
       } else {
-        setMessage({ type: 'error', text: data.error || data.message || 'Failed to sync quote to GHL' });
+        setMessage({ type: 'error', text: data.error || data.message || 'Failed to sync to GHL' });
       }
     } catch (error) {
       console.error('Error syncing quote:', error);
-      setMessage({ type: 'error', text: 'Failed to sync quote to GHL' });
+      setMessage({ type: 'error', text: 'Failed to sync to GHL' });
     } finally {
-      setSyncing(prev => ({ ...prev, [String(quoteId)]: false }));
+      setSyncing(false);
     }
   };
 
   return (
     <div className="container">
       <div className="header">
-        <h1>Maid Central Quotes</h1>
-        <p>View and manually sync quotes to GoHighLevel</p>
+        <h1>Quote Lookup</h1>
+        <p>Lookup a Maid Central Lead/Quote by Lead ID to sync to GoHighLevel.</p>
+      </div>
+
+      <div style={{ marginBottom: '2rem' }}>
+        <Link href="/" className="btn" style={{ backgroundColor: '#e0e0e0' }}>
+          ← Back to Home
+        </Link>
       </div>
 
       {message && (
-        <div className={`alert alert-${message.type}`}>
+        <div className={`alert alert-${message.type}`} style={{ 
+          padding: '1rem', 
+          marginBottom: '1rem', 
+          borderRadius: '4px',
+          backgroundColor: message.type === 'error' ? '#fee2e2' : message.type === 'success' ? '#dcfce7' : '#e0f2fe',
+          color: message.type === 'error' ? '#991b1b' : message.type === 'success' ? '#166534' : '#075985'
+        }}>
           {message.text}
         </div>
       )}
 
       <div className="section">
-        <div className="flex-between mb-2">
-          <h2 className="section-title">Quotes ({quotes.length} of {allQuotes.length} matching)</h2>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button type="button" onClick={loadQuotes} className="btn btn-secondary btn-small">
-              Refresh
-            </button>
-            <Link href="/" className="btn btn-secondary btn-small">
-              ← Back to Home
-            </Link>
+        <h2 className="section-title">Lookup Lead/Quote</h2>
+        <form onSubmit={handleLookup} style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', marginBottom: '2rem' }}>
+          <div style={{ flex: 1 }}>
+            <label htmlFor="lookupId" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+              Maid Central Lead ID
+            </label>
+            <input
+              id="lookupId"
+              type="text"
+              placeholder="Enter Lead ID (e.g. 12345)"
+              value={lookupId}
+              onChange={(e) => setLookupId(e.target.value)}
+              style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid #ddd' }}
+            />
           </div>
-        </div>
-
-        <div className="mb-2" style={{ display: 'flex', gap: '0.5rem' }}>
-          <input
-            type="text"
-            placeholder="Search by quote number, customer name, email, phone, or status..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ flex: 1, padding: '0.5rem', borderRadius: '4px', border: '1px solid #ddd' }}
-          />
           <button 
-            type="button" 
-            onClick={() => { 
-              setSearchQuery(''); 
-              setQuotes(allQuotes);
-            }} 
-            className="btn"
-            disabled={!searchQuery}
+            type="submit" 
+            disabled={loading || !lookupId.trim()}
+            className="btn btn-primary"
+            style={{ height: '46px', backgroundColor: '#2563eb', color: 'white' }}
           >
-            Clear
+            {loading ? 'Searching...' : 'Find Record'}
           </button>
-        </div>
+        </form>
 
-        {loading ? (
-          <p>Loading quotes...</p>
-        ) : quotes.length === 0 ? (
-          <p style={{ color: '#666', fontStyle: 'italic' }}>No quotes found matching your search.</p>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ borderBottom: '2px solid #ddd' }}>
-                  <th style={{ padding: '0.75rem', textAlign: 'left' }}>Quote #</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'left' }}>Customer</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'left' }}>Email</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'left' }}>Phone</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'left' }}>Amount</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'left' }}>Status</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'left' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {quotes.map((quote) => (
-                  <tr key={quote.id} style={{ borderBottom: '1px solid #eee' }}>
-                    <td style={{ padding: '0.75rem', fontFamily: 'monospace', fontSize: '0.85rem' }}>
-                      {quote.quoteNumber || quote.id}
-                    </td>
-                    <td style={{ padding: '0.75rem' }}>{quote.customerName || '-'}</td>
-                    <td style={{ padding: '0.75rem' }}>{quote.customerEmail || '-'}</td>
-                    <td style={{ padding: '0.75rem' }}>{quote.customerPhone || '-'}</td>
-                    <td style={{ padding: '0.75rem' }}>
-                      {quote.totalAmount ? `$${Number(quote.totalAmount).toFixed(2)}` : '-'}
-                    </td>
-                    <td style={{ padding: '0.75rem' }}>
-                      <span style={{ 
-                        padding: '0.25rem 0.5rem', 
-                        borderRadius: '4px',
-                        backgroundColor: quote.status === 'approved' ? '#d4edda' : '#fff3cd',
-                        color: quote.status === 'approved' ? '#155724' : '#856404',
-                        fontSize: '0.85rem'
-                      }}>
-                        {quote.status || 'unknown'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '0.75rem' }}>
-                      <button
-                        onClick={() => syncQuoteToGHL(quote.id)}
-                        disabled={syncing[String(quote.id)]}
-                        className="btn btn-primary btn-small"
-                        style={{ 
-                          fontSize: '0.85rem',
-                          padding: '0.4rem 0.8rem',
-                          backgroundColor: syncing[String(quote.id)] ? '#999' : '#2563eb'
-                        }}
-                      >
-                        {syncing[String(quote.id)] ? 'Syncing...' : 'Sync to GHL'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {foundQuote && (
+          <div style={{ border: '1px solid #ddd', borderRadius: '8px', padding: '1.5rem', backgroundColor: '#f9fafb' }}>
+            <h3 style={{ marginTop: 0, borderBottom: '1px solid #eee', paddingBottom: '0.5rem', marginBottom: '1rem' }}>
+              Record Details
+            </h3>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+              <div>
+                <strong style={{ display: 'block', color: '#666', fontSize: '0.9rem' }}>Customer</strong>
+                <div style={{ fontSize: '1.1rem' }}>{foundQuote.customerName}</div>
+              </div>
+              <div>
+                <strong style={{ display: 'block', color: '#666', fontSize: '0.9rem' }}>Status</strong>
+                <span style={{ 
+                  padding: '0.25rem 0.5rem', 
+                  borderRadius: '4px',
+                  backgroundColor: '#e0f2fe',
+                  color: '#0369a1',
+                  fontSize: '0.9rem'
+                }}>
+                  {foundQuote.status}
+                </span>
+              </div>
+              <div>
+                <strong style={{ display: 'block', color: '#666', fontSize: '0.9rem' }}>Email</strong>
+                <div>{foundQuote.customerEmail || 'N/A'}</div>
+              </div>
+              <div>
+                <strong style={{ display: 'block', color: '#666', fontSize: '0.9rem' }}>Phone</strong>
+                <div>{foundQuote.customerPhone || 'N/A'}</div>
+              </div>
+              <div>
+                <strong style={{ display: 'block', color: '#666', fontSize: '0.9rem' }}>Lead ID</strong>
+                <div style={{ fontFamily: 'monospace' }}>{foundQuote.id}</div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={syncQuoteToGHL}
+                disabled={syncing}
+                className="btn"
+                style={{ 
+                  backgroundColor: syncing ? '#9ca3af' : '#16a34a', 
+                  color: 'white',
+                  padding: '0.75rem 1.5rem',
+                  fontSize: '1rem'
+                }}
+              >
+                {syncing ? 'Syncing...' : 'Sync to GoHighLevel'}
+              </button>
+            </div>
+          </div>
+        )}
+        
+        {!foundQuote && !loading && (
+          <div style={{ padding: '2rem', textAlign: 'center', color: '#666', backgroundColor: '#f9f9f9', borderRadius: '8px' }}>
+            <p>Enter a Lead ID above to search for a record.</p>
+            <p style={{ fontSize: '0.85rem', marginTop: '0.5rem' }}>
+              Note: Maid Central API does not support searching by name or email. You must provide the exact Lead ID.
+            </p>
           </div>
         )}
       </div>

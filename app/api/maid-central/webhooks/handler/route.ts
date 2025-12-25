@@ -97,18 +97,22 @@ async function processWebhookEvent(eventType: string, entityId: any, payload: an
 }
 
 async function handleQuoteEvent(quoteId: any, locationId: string, mappings: any[]) {
-  const quote = await maidCentralAPI.getQuote(quoteId);
+  // TODO: Implement fetching quote data via MaidCentral Lead API (e.g., /api/Lead/Quote or /api/Lead/Lead)
+  // For now, we disable this to avoid build-time errors since the old /quotes endpoint is no longer used.
+  console.warn('[Webhook] handleQuoteEvent is not implemented for the new MaidCentral Lead API yet.');
+  return;
   
-  const contactData: Record<string, any> = {};
-  for (const mapping of mappings) {
-    const value = quote[mapping.maidCentralField];
-    if (value !== undefined && value !== null) {
-      contactData[mapping.ghlField] = value;
-    }
-  }
-
-  await ghlAPI.createContact(locationId, contactData);
-  console.log(`[Webhook] Quote ${quoteId} synced to GHL`);
+  // Previous implementation (kept for reference):
+  // const quote = await maidCentralAPI.getQuote(quoteId);
+  // const contactData: Record<string, any> = {};
+  // for (const mapping of mappings) {
+  //   const value = quote[mapping.maidCentralField];
+  //   if (value !== undefined && value !== null) {
+  //     contactData[mapping.ghlField] = value;
+  //   }
+  // }
+  // await ghlAPI.createContact(locationId, contactData);
+  // console.log(`[Webhook] Quote ${quoteId} synced to GHL`);
 }
 
 async function handleCustomerEvent(customerId: any, locationId: string, mappings: any[]) {

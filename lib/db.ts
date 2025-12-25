@@ -39,6 +39,11 @@ export interface IntegrationConfig {
   createOpportunities: boolean; // Toggle for creating opportunities when quotes are synced
   autoCreateFields: boolean; // Automatically create custom fields in GHL
   customFieldPrefix: string; // Prefix for custom fields (default: "maidcentral_quote_")
+  // Appointment sync configuration
+  syncAppointments?: boolean; // Toggle for syncing appointments
+  ghlCalendarId?: string; // GHL calendar ID to sync with
+  appointmentSyncInterval?: number; // Polling interval in minutes (default: 15)
+  appointmentConflictResolution?: 'maid_central_wins' | 'ghl_wins' | 'timestamp'; // Conflict resolution strategy
 }
 
 // Initialize database tables
@@ -164,6 +169,33 @@ export async function initDatabase(): Promise<void> {
         created_at TIMESTAMP DEFAULT NOW()
       )
     `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS appointment_syncs (
+        id SERIAL PRIMARY KEY,
+        maid_central_appointment_id VARCHAR(255),
+        ghl_appointment_id VARCHAR(255),
+        ghl_calendar_id VARCHAR(255),
+        maid_central_last_modified TIMESTAMP,
+        ghl_last_modified TIMESTAMP,
+        sync_direction VARCHAR(50),
+        conflict_resolution VARCHAR(50),
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(maid_central_appointment_id, ghl_appointment_id)
+      )
+    `;
+
+    // Add appointment sync columns to integration_config if they don't exist
+    try {
+      await sql`ALTER TABLE integration_config ADD COLUMN IF NOT EXISTS sync_appointments BOOLEAN DEFAULT false`;
+      await sql`ALTER TABLE integration_config ADD COLUMN IF NOT EXISTS ghl_calendar_id TEXT`;
+      await sql`ALTER TABLE integration_config ADD COLUMN IF NOT EXISTS appointment_sync_interval INTEGER DEFAULT 15`;
+      await sql`ALTER TABLE integration_config ADD COLUMN IF NOT EXISTS appointment_conflict_resolution VARCHAR(50) DEFAULT 'timestamp'`;
+    } catch (error) {
+      // Columns might already exist, ignore error
+      console.log('Appointment sync columns already exist or error adding them:', error);
+    }
 
     // Ensure we have a single integration config row
     const configExists = await sql`
@@ -339,7 +371,7 @@ export async function storeIntegrationConfig(config: IntegrationConfig): Promise
 
   if (configExists.length === 0) {
     await sql`
-      INSERT INTO integration_config (ghl_location_id, enabled, ghl_tag, ghl_tags, sync_quotes, sync_customers, create_opportunities, auto_create_fields, custom_field_prefix)
+      INSERT INTO integration_config (ghl_location_id, enabled, ghl_tag, ghl_tags, sync_quotes, sync_customers, create_opportunities, auto_create_fields, custom_field_prefix, sync_appointments, ghl_calendar_id, appointment_sync_interval, appointment_conflict_resolution)
       VALUES (
         ${config.ghlLocationId || null}, 
         ${config.enabled}, 
@@ -349,7 +381,11 @@ export async function storeIntegrationConfig(config: IntegrationConfig): Promise
         ${config.syncCustomers !== undefined ? config.syncCustomers : false},
         ${config.createOpportunities !== undefined ? config.createOpportunities : true},
         ${config.autoCreateFields !== undefined ? config.autoCreateFields : true},
-        ${config.customFieldPrefix || 'maidcentral_quote_'}
+        ${config.customFieldPrefix || 'maidcentral_quote_'},
+        ${config.syncAppointments !== undefined ? config.syncAppointments : false},
+        ${config.ghlCalendarId || null},
+        ${config.appointmentSyncInterval !== undefined ? config.appointmentSyncInterval : 15},
+        ${config.appointmentConflictResolution || 'timestamp'}
       )
     `;
   } else {
@@ -365,6 +401,10 @@ export async function storeIntegrationConfig(config: IntegrationConfig): Promise
         create_opportunities = ${config.createOpportunities !== undefined ? config.createOpportunities : true},
         auto_create_fields = ${config.autoCreateFields !== undefined ? config.autoCreateFields : true},
         custom_field_prefix = ${config.customFieldPrefix || 'maidcentral_quote_'},
+        sync_appointments = ${config.syncAppointments !== undefined ? config.syncAppointments : false},
+        ghl_calendar_id = ${config.ghlCalendarId || null},
+        appointment_sync_interval = ${config.appointmentSyncInterval !== undefined ? config.appointmentSyncInterval : 15},
+        appointment_conflict_resolution = ${config.appointmentConflictResolution || 'timestamp'},
         updated_at = NOW()
       WHERE id = ${configExists[0].id}
     `;
@@ -379,7 +419,7 @@ export async function getIntegrationConfig(): Promise<IntegrationConfig | null> 
   const sql = getSql();
   
   const result = await sql`
-    SELECT ghl_location_id, enabled, ghl_tag, ghl_tags, sync_quotes, sync_customers, create_opportunities, auto_create_fields, custom_field_prefix
+    SELECT ghl_location_id, enabled, ghl_tag, ghl_tags, sync_quotes, sync_customers, create_opportunities, auto_create_fields, custom_field_prefix, sync_appointments, ghl_calendar_id, appointment_sync_interval, appointment_conflict_resolution
     FROM integration_config
     LIMIT 1
   `;
@@ -393,6 +433,9 @@ export async function getIntegrationConfig(): Promise<IntegrationConfig | null> 
         createOpportunities: true,
         autoCreateFields: true,
         customFieldPrefix: 'maidcentral_quote_',
+        syncAppointments: false,
+        appointmentSyncInterval: 15,
+        appointmentConflictResolution: 'timestamp',
       };
     }
 
@@ -405,6 +448,10 @@ export async function getIntegrationConfig(): Promise<IntegrationConfig | null> 
     const createOpportunities = (row.create_opportunities !== undefined && row.create_opportunities !== null) ? row.create_opportunities as boolean : true;
     const autoCreateFields = row.auto_create_fields !== undefined && row.auto_create_fields !== null ? row.auto_create_fields as boolean : true;
     const customFieldPrefix = (row.custom_field_prefix as string | undefined) || 'maidcentral_quote_';
+    const syncAppointments = row.sync_appointments !== undefined && row.sync_appointments !== null ? row.sync_appointments as boolean : false;
+    const ghlCalendarId = row.ghl_calendar_id as string | undefined;
+    const appointmentSyncInterval = row.appointment_sync_interval !== undefined && row.appointment_sync_interval !== null ? row.appointment_sync_interval as number : 15;
+    const appointmentConflictResolution = (row.appointment_conflict_resolution as 'maid_central_wins' | 'ghl_wins' | 'timestamp' | undefined) || 'timestamp';
 
     // Handle tags: support both old single tag (ghl_tag) and new multiple tags (ghl_tags as JSON)
     let ghlTags: string[] | undefined;
@@ -430,6 +477,10 @@ export async function getIntegrationConfig(): Promise<IntegrationConfig | null> 
       createOpportunities,
       autoCreateFields,
       customFieldPrefix,
+      syncAppointments,
+      ghlCalendarId,
+      appointmentSyncInterval,
+      appointmentConflictResolution,
       fieldMappings,
     };
 }
@@ -468,5 +519,146 @@ export async function getFieldMappings(): Promise<FieldMapping[]> {
     ghlField: row.ghl_field as string,
     maidCentralLabel: row.maid_central_label as string | undefined,
     ghlLabel: row.ghl_label as string | undefined,
+  }));
+}
+
+// Appointment Sync Tracking
+export interface AppointmentSync {
+  id?: number;
+  maidCentralAppointmentId?: string;
+  ghlAppointmentId?: string;
+  ghlCalendarId?: string;
+  maidCentralLastModified?: Date;
+  ghlLastModified?: Date;
+  syncDirection?: 'mc_to_ghl' | 'ghl_to_mc' | 'bidirectional';
+  conflictResolution?: 'maid_central_wins' | 'ghl_wins' | 'timestamp';
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export async function storeAppointmentSync(sync: AppointmentSync): Promise<void> {
+  await initDatabase();
+  const sql = getSql();
+
+  // Check if sync record exists
+  const existing = await sql`
+    SELECT id FROM appointment_syncs
+    WHERE (maid_central_appointment_id = ${sync.maidCentralAppointmentId || null} AND maid_central_appointment_id IS NOT NULL)
+       OR (ghl_appointment_id = ${sync.ghlAppointmentId || null} AND ghl_appointment_id IS NOT NULL)
+    LIMIT 1
+  `;
+
+  if (existing.length > 0) {
+    await sql`
+      UPDATE appointment_syncs
+      SET
+        maid_central_appointment_id = ${sync.maidCentralAppointmentId || null},
+        ghl_appointment_id = ${sync.ghlAppointmentId || null},
+        ghl_calendar_id = ${sync.ghlCalendarId || null},
+        maid_central_last_modified = ${sync.maidCentralLastModified || null},
+        ghl_last_modified = ${sync.ghlLastModified || null},
+        sync_direction = ${sync.syncDirection || null},
+        conflict_resolution = ${sync.conflictResolution || null},
+        updated_at = NOW()
+      WHERE id = ${existing[0].id}
+    `;
+  } else {
+    await sql`
+      INSERT INTO appointment_syncs (
+        maid_central_appointment_id, ghl_appointment_id, ghl_calendar_id,
+        maid_central_last_modified, ghl_last_modified, sync_direction, conflict_resolution
+      )
+      VALUES (
+        ${sync.maidCentralAppointmentId || null},
+        ${sync.ghlAppointmentId || null},
+        ${sync.ghlCalendarId || null},
+        ${sync.maidCentralLastModified || null},
+        ${sync.ghlLastModified || null},
+        ${sync.syncDirection || null},
+        ${sync.conflictResolution || null}
+      )
+    `;
+  }
+}
+
+export async function getAppointmentSync(mcId?: string, ghlId?: string): Promise<AppointmentSync | null> {
+  await initDatabase();
+  const sql = getSql();
+
+  let result;
+  if (mcId) {
+    result = await sql`
+      SELECT * FROM appointment_syncs
+      WHERE maid_central_appointment_id = ${mcId}
+      LIMIT 1
+    `;
+  } else if (ghlId) {
+    result = await sql`
+      SELECT * FROM appointment_syncs
+      WHERE ghl_appointment_id = ${ghlId}
+      LIMIT 1
+    `;
+  } else {
+    return null;
+  }
+
+  if (result.length === 0) {
+    return null;
+  }
+
+  const row = result[0];
+  return {
+    id: row.id as number,
+    maidCentralAppointmentId: row.maid_central_appointment_id as string | undefined,
+    ghlAppointmentId: row.ghl_appointment_id as string | undefined,
+    ghlCalendarId: row.ghl_calendar_id as string | undefined,
+    maidCentralLastModified: row.maid_central_last_modified ? new Date(row.maid_central_last_modified as Date) : undefined,
+    ghlLastModified: row.ghl_last_modified ? new Date(row.ghl_last_modified as Date) : undefined,
+    syncDirection: row.sync_direction as 'mc_to_ghl' | 'ghl_to_mc' | 'bidirectional' | undefined,
+    conflictResolution: row.conflict_resolution as 'maid_central_wins' | 'ghl_wins' | 'timestamp' | undefined,
+    createdAt: row.created_at ? new Date(row.created_at as Date) : undefined,
+    updatedAt: row.updated_at ? new Date(row.updated_at as Date) : undefined,
+  };
+}
+
+export async function updateSyncTimestamps(
+  mcId: string | undefined,
+  ghlId: string | undefined,
+  mcTimestamp: Date | undefined,
+  ghlTimestamp: Date | undefined
+): Promise<void> {
+  await initDatabase();
+  const sql = getSql();
+
+  const sync = await getAppointmentSync(mcId, ghlId);
+  if (sync) {
+    await storeAppointmentSync({
+      ...sync,
+      maidCentralLastModified: mcTimestamp,
+      ghlLastModified: ghlTimestamp,
+    });
+  }
+}
+
+export async function getAllAppointmentSyncs(): Promise<AppointmentSync[]> {
+  await initDatabase();
+  const sql = getSql();
+
+  const result = await sql`
+    SELECT * FROM appointment_syncs
+    ORDER BY updated_at DESC
+  `;
+
+  return result.map((row) => ({
+    id: row.id as number,
+    maidCentralAppointmentId: row.maid_central_appointment_id as string | undefined,
+    ghlAppointmentId: row.ghl_appointment_id as string | undefined,
+    ghlCalendarId: row.ghl_calendar_id as string | undefined,
+    maidCentralLastModified: row.maid_central_last_modified ? new Date(row.maid_central_last_modified as Date) : undefined,
+    ghlLastModified: row.ghl_last_modified ? new Date(row.ghl_last_modified as Date) : undefined,
+    syncDirection: row.sync_direction as 'mc_to_ghl' | 'ghl_to_mc' | 'bidirectional' | undefined,
+    conflictResolution: row.conflict_resolution as 'maid_central_wins' | 'ghl_wins' | 'timestamp' | undefined,
+    createdAt: row.created_at ? new Date(row.created_at as Date) : undefined,
+    updatedAt: row.updated_at ? new Date(row.updated_at as Date) : undefined,
   }));
 }

@@ -5,7 +5,18 @@ import { getIntegrationConfig, storeIntegrationConfig, getGHLPrivateToken, type 
 export async function GET(request: NextRequest) {
   try {
     const config = await getIntegrationConfig();
-    const ghlToken = await getGHLPrivateToken();
+    
+    // Check GHL connection status - token must exist AND have a valid token value
+    let ghlConnected = false;
+    try {
+      const ghlToken = await getGHLPrivateToken();
+      // Token is connected if it exists AND has a valid token string AND has a location ID
+      ghlConnected = !!(ghlToken && ghlToken.privateToken && ghlToken.privateToken.trim() !== '' && (ghlToken.locationId || config?.ghlLocationId));
+    } catch (tokenError) {
+      // If token fetch fails, assume not connected
+      console.warn('[Config] Failed to fetch GHL token:', tokenError);
+      ghlConnected = false;
+    }
     
     return NextResponse.json({
       config: config || { 
@@ -19,7 +30,7 @@ export async function GET(request: NextRequest) {
         autoCreateFields: true,
         customFieldPrefix: 'maidcentral_quote_',
       },
-      ghlConnected: !!ghlToken,
+      ghlConnected,
       hasLocationId: !!config?.ghlLocationId,
     });
   } catch (error) {

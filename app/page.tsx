@@ -15,9 +15,19 @@ interface ConfigStatus {
     createOpportunities?: boolean;
     autoCreateFields?: boolean;
     customFieldPrefix?: string;
+    syncAppointments?: boolean;
+    ghlCalendarId?: string;
+    appointmentSyncInterval?: number;
+    appointmentConflictResolution?: string;
   };
   ghlConnected: boolean;
   hasLocationId: boolean;
+  appointmentSyncStatus?: {
+    enabled: boolean;
+    totalSynced: number;
+    lastSync: string | null;
+    calendarId?: string;
+  };
 }
 
 export default function Home() {
@@ -31,44 +41,92 @@ export default function Home() {
   const fetchStatus = async () => {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout (increased for slow connections)
       
       try {
-        const response = await fetch('/api/config', {
-          signal: controller.signal,
-        });
+        // Load config first (critical path)
+        const configResponse = await fetch('/api/config', { signal: controller.signal });
         
         clearTimeout(timeoutId);
         
-        if (!response.ok) {
-          const errorText = await response.text();
+        if (!configResponse.ok) {
+          const errorText = await configResponse.text();
           console.error('API error response:', errorText);
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          throw new Error(`HTTP ${configResponse.status}: ${configResponse.statusText}`);
         }
         
-        const data = await response.json();
+        const data = await configResponse.json();
+        
+        // Set status immediately so page can render
+        // Make sure we preserve ghlConnected from the API response
         if (data.error && (data.error.includes('DATABASE_URL') || data.error.includes('database'))) {
           setStatus({
             config: { enabled: false, fieldMappings: [] },
-            ghlConnected: false,
-            hasLocationId: false,
+            ghlConnected: data.ghlConnected ?? false, // Preserve API response
+            hasLocationId: data.hasLocationId ?? false,
             dbError: true,
           } as any);
         } else {
+          // Use the data from API response directly, including ghlConnected
           setStatus(data);
         }
-      } catch (fetchError) {
+        
+        // Load appointment status asynchronously (non-blocking)
+        // Only load if appointment syncing is enabled
+        if (data.config?.syncAppointments) {
+          // Use a separate fetch without abort controller for async status
+          fetch('/api/sync/appointments/status')
+            .then(async (response) => {
+              if (response.ok) {
+                const appointmentData = await response.json();
+                setStatus((prev) => ({
+                  ...prev!,
+                  appointmentSyncStatus: {
+                    enabled: appointmentData.enabled || false,
+                    totalSynced: appointmentData.totalSynced || 0,
+                    lastSync: appointmentData.lastSync || null,
+                    calendarId: appointmentData.calendarId,
+                  },
+                }));
+              }
+            })
+            .catch((err) => {
+              // Silently fail - appointment status is non-critical
+              // Don't log AbortError as it's expected
+              if (err.name !== 'AbortError') {
+                console.log('Appointment status fetch failed (non-critical):', err);
+              }
+            });
+        }
+      } catch (fetchError: any) {
         clearTimeout(timeoutId);
+        
+        // Don't throw or log AbortError - it's expected when timeout is reached
+        if (fetchError?.name === 'AbortError') {
+          // Timeout reached, set default status
+          setStatus({
+            config: { enabled: false, fieldMappings: [], syncQuotes: true, syncCustomers: false, createOpportunities: true, autoCreateFields: true, customFieldPrefix: 'maidcentral_quote_' },
+            ghlConnected: false,
+            hasLocationId: false,
+            error: 'Request timed out. Please check your connection.',
+          } as any);
+          return;
+        }
+        
         throw fetchError;
       }
     } catch (error: any) {
-      console.error('Error fetching status:', error);
+      // Only log non-abort errors
+      if (error?.name !== 'AbortError') {
+        console.error('Error fetching status:', error);
+      }
+      
       // Set a default status so the page can render even on error
       setStatus({
         config: { enabled: false, fieldMappings: [], syncQuotes: true, syncCustomers: false, createOpportunities: true, autoCreateFields: true, customFieldPrefix: 'maidcentral_quote_' },
         ghlConnected: false,
         hasLocationId: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error && error.name !== 'AbortError' ? error.message : 'Unknown error',
       } as any);
     } finally {
       setLoading(false);
@@ -217,6 +275,22 @@ export default function Home() {
               {status?.config?.autoCreateFields !== false ? 'ON' : 'OFF'}
             </span>
           </div>
+          <div className="flex-between" style={{ padding: '0.75rem', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
+            <div>
+              <strong>Appointment Syncing</strong>
+              <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#666' }}>
+                {status?.config?.syncAppointments ? `Enabled - ${status?.appointmentSyncStatus?.totalSynced || 0} appointments synced` : 'Disabled'}
+              </p>
+              {status?.appointmentSyncStatus?.lastSync && (
+                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.75rem', color: '#999' }}>
+                  Last sync: {new Date(status.appointmentSyncStatus.lastSync).toLocaleString()}
+                </p>
+              )}
+            </div>
+            <span className={`status-badge ${status?.config?.syncAppointments ? 'success' : 'error'}`}>
+              {status?.config?.syncAppointments ? 'ON' : 'OFF'}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -234,6 +308,15 @@ export default function Home() {
           </Link>
           <Link href="/quotes" className="btn btn-secondary">
             Quotes
+          </Link>
+          <Link href="/widget" className="btn btn-secondary">
+            Booking Widget
+          </Link>
+          <Link href="/widget-config" className="btn btn-secondary">
+            Widget Config
+          </Link>
+          <Link href="/appointments" className="btn btn-secondary">
+            Appointments
           </Link>
         </div>
       </div>

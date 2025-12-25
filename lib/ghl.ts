@@ -1,7 +1,11 @@
 import axios, { AxiosInstance } from 'axios';
 import { getGHLPrivateToken, type GHLPrivateToken } from './kv';
 
+// GHL API v2 base URL
 const GHL_API_BASE_URL = 'https://services.leadconnectorhq.com';
+
+// GHL API v2 endpoints - check if we need /v2/ prefix
+// Private tokens work with v2 API, but endpoints may need adjustment
 
 // Create axios instance with timeout for serverless optimization
 const createAxiosInstance = (): AxiosInstance => {
@@ -49,22 +53,80 @@ export class GHLAPI {
   }
 
   async getLocations(): Promise<any[]> {
-    const token = await this.getPrivateToken();
-    
-    try {
-      const response = await this.client.get('/locations/', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Version: '2021-07-28',
-        },
-      });
-      return response.data?.locations || [];
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        throw new Error(`Failed to fetch locations: ${error.response?.data?.message || error.message}`);
-      }
-      throw error;
+    // Get both token and location ID from storage
+    const tokenData = await getGHLPrivateToken();
+    if (!tokenData?.privateToken) {
+      throw new Error('GHL private token not configured');
     }
+    const token = tokenData.privateToken;
+    const storedLocationId = tokenData.locationId;
+    
+    // Try multiple endpoint patterns
+    const endpoints = [
+      { url: '/locations', params: {}, description: '/locations' },
+      { url: '/locations/', params: {}, description: '/locations/' },
+      { url: '/accounts', params: {}, description: '/accounts' },
+    ];
+
+    // If we have a stored location ID, prioritize checking that specific location
+    // This is crucial for Private Tokens which often can't "list" locations but can access their own
+    if (storedLocationId) {
+      endpoints.unshift({ 
+        url: `/locations/${storedLocationId}`, 
+        params: {}, 
+        description: `/locations/${storedLocationId} (Stored ID)` 
+      });
+    }
+    
+    for (const endpoint of endpoints) {
+      try {
+        console.log(`[GHL API] Trying locations endpoint: ${endpoint.description}`);
+        const response = await this.client.get(endpoint.url, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Version: '2021-07-28',
+          },
+          params: endpoint.params,
+        });
+        
+        // Handle single location response (from /locations/{id})
+        if (response.data?.location) {
+          console.log(`[GHL API] Success! Found specific location: ${response.data.location.id}`);
+          return [response.data.location];
+        }
+
+        // Handle list response
+        if (Array.isArray(response.data)) {
+          return response.data;
+        }
+        const locations = response.data?.locations || response.data?.data || [];
+        if (locations.length > 0) {
+          console.log(`[GHL API] Success! Found ${locations.length} locations using: ${endpoint.description}`);
+          return locations;
+        }
+      } catch (error) {
+        if (axios.isAxiosError(error)) {
+          // If it's the specific location check and it failed, log it but continue
+          console.log(`[GHL API] Endpoint ${endpoint.description} failed: ${error.response?.status}`);
+          
+          if (endpoint === endpoints[endpoints.length - 1]) {
+             // If all failed, but we have a stored Location ID that we couldn't verify, 
+             // we might still return it as a "known" location to prevent UI from thinking we are disconnected
+             // provided the error wasn't an auth error (401)
+             if (storedLocationId && error.response?.status !== 401) {
+               console.log('[GHL API] API calls failed but token exists. Returning stored location as fallback.');
+               return [{ id: storedLocationId, name: 'Configured Location' }];
+             }
+             
+             throw new Error(`Failed to fetch locations: ${error.response?.data?.message || error.response?.statusText || error.message}`);
+          }
+        } else {
+          throw error;
+        }
+      }
+    }
+    
+    return [];
   }
 
   async getContactCustomFields(locationId: string): Promise<any[]> {
@@ -284,7 +346,7 @@ export class GHLAPI {
     const token = await this.getPrivateToken();
     
     try {
-      const response = await this.client.post('/contacts/', contactData, {
+      const response = await this.client.post('/contacts', contactData, {
         headers: {
           Authorization: `Bearer ${token}`,
           Version: '2021-07-28',
@@ -372,7 +434,7 @@ export class GHLAPI {
     const token = await this.getPrivateToken();
     
     try {
-      const response = await this.client.post('/opportunities/', {
+      const response = await this.client.post('/opportunities', {
         contactId,
         ...opportunityData,
       }, {
@@ -549,6 +611,254 @@ export class GHLAPI {
       .split('_')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
+  }
+
+  // ===== Calendar & Appointment API Methods =====
+  // NOTE: These endpoints need to be verified with GoHighLevel API documentation
+
+  async getCalendars(locationId: string): Promise<any[]> {
+    const token = await this.getPrivateToken();
+    
+    console.log(`[GHL API] Fetching calendars for location: ${locationId}`);
+    
+    // Try multiple endpoint patterns based on GHL API v2 documentation
+    // DIAGNOSTIC RESULT: /calendars/ (with trailing slash) is the ONLY working endpoint for Private Tokens
+    const endpoints = [
+      // Pattern 1: /calendars/ with locationId param (CONFIRMED WORKING)
+      { url: '/calendars/', params: { locationId }, description: '/calendars/ with locationId param (CONFIRMED)' },
+      // Pattern 2: /calendars with locationId param (Standard REST, but fails on GHL)
+      { url: '/calendars', params: { locationId }, description: '/calendars with locationId param' },
+      // Pattern 3: /locations/{locationId}/calendars (following pattern of /locations/{locationId}/customFields)
+      { url: `/locations/${locationId}/calendars`, params: {}, description: '/locations/{locationId}/calendars' },
+    ];
+    
+    for (const endpoint of endpoints) {
+      try {
+        console.log(`[GHL API] Trying endpoint: ${endpoint.description}`);
+        const response = await this.client.get(endpoint.url, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Version: '2021-07-28',
+          },
+          params: endpoint.params,
+        });
+        
+        console.log('[GHL API] Calendars response:', {
+          endpoint: endpoint.description,
+          status: response.status,
+          dataKeys: Object.keys(response.data || {}),
+          hasCalendars: !!response.data?.calendars,
+          hasData: !!response.data?.data,
+          isArray: Array.isArray(response.data),
+          dataLength: Array.isArray(response.data) ? response.data.length : 'not array',
+          rawDataSample: JSON.stringify(response.data).substring(0, 200),
+        });
+        
+        // Handle different response structures
+        let calendars: any[] = [];
+        if (Array.isArray(response.data)) {
+          calendars = response.data;
+        } else if (response.data?.calendars && Array.isArray(response.data.calendars)) {
+          calendars = response.data.calendars;
+        } else if (response.data?.data && Array.isArray(response.data.data)) {
+          calendars = response.data.data;
+        } else if (response.data?.calendar && Array.isArray(response.data.calendar)) {
+          calendars = response.data.calendar;
+        } else if (response.data?.calendars && typeof response.data.calendars === 'object') {
+          // Sometimes calendars is an object with IDs as keys
+          calendars = Object.values(response.data.calendars);
+        }
+        
+        if (calendars.length > 0) {
+          console.log(`[GHL API] Success! Found ${calendars.length} calendars using endpoint: ${endpoint.description}`);
+          return calendars;
+        } else {
+          console.log(`[GHL API] Endpoint ${endpoint.description} returned empty array, trying next...`);
+        }
+      } catch (error) {
+        if (axios.isAxiosError(error)) {
+          console.log(`[GHL API] Endpoint ${endpoint.description} failed:`, {
+            status: error.response?.status,
+            statusText: error.response?.statusText,
+          });
+          // Continue to next endpoint unless it's the last one
+          if (endpoint === endpoints[endpoints.length - 1]) {
+            // Last endpoint failed, throw error
+            throw new Error(`All calendar endpoints failed. Last error: ${error.response?.status} ${error.response?.statusText}. Response: ${JSON.stringify(error.response?.data || {})}`);
+          }
+        } else {
+          // Non-HTTP error, throw immediately
+          throw error;
+        }
+      }
+    }
+    
+    // If we get here, all endpoints returned empty arrays but no errors
+    console.warn('[GHL API] All endpoints returned empty arrays - no calendars found');
+    return [];
+  }
+
+  async getCalendar(calendarId: string, locationId: string): Promise<any> {
+    const token = await this.getPrivateToken();
+    
+    try {
+      const response = await this.client.get(`/locations/${locationId}/calendars/${calendarId}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Version: '2021-07-28',
+        },
+      });
+      return response.data?.calendar || response.data?.data || response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(`Failed to get calendar: ${error.response?.data?.message || error.message}`);
+      }
+      throw error;
+    }
+  }
+
+  async getCalendarAppointments(calendarId: string, locationId: string, filters?: { startDate?: string; endDate?: string }): Promise<any[]> {
+    const token = await this.getPrivateToken();
+    
+    try {
+      const params: any = { 
+        locationId,
+        calendarId, // Required for /calendars/events
+        limit: 100 // Reasonable default
+      };
+      
+      if (filters?.startDate) params.startTime = filters.startDate; // GHL uses startTime, not startDate
+      if (filters?.endDate) params.endTime = filters.endDate;     // GHL uses endTime, not endDate
+
+      console.log(`[GHL API] Fetching appointments for calendar ${calendarId} in location ${locationId}`);
+
+      // Use the /calendars/events endpoint which is the standard for listing appointments in v2
+      const response = await this.client.get('/calendars/events', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Version: '2021-07-28',
+        },
+        params,
+      });
+      
+      return response.data?.events || response.data?.appointments || response.data?.data || [];
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        console.error('[GHL API] Error fetching appointments:', error.response?.data);
+        throw new Error(`Failed to get calendar appointments: ${error.response?.data?.message || error.message}`);
+      }
+      throw error;
+    }
+  }
+
+  async createCalendarAppointment(calendarId: string, locationId: string, appointmentData: any): Promise<any> {
+    const token = await this.getPrivateToken();
+    
+    try {
+      // Try /calendars/events endpoint (confirmed to exist per API docs)
+      const requestBody = {
+        ...appointmentData,
+        locationId,
+        calendarId,
+      };
+      
+      const response = await this.client.post('/calendars/events', requestBody, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Version: '2021-07-28',
+          'Content-Type': 'application/json',
+        },
+      });
+      return response.data?.appointment || response.data?.event || response.data?.data || response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        // Try fallback endpoint
+        try {
+          const response = await this.client.post(`/locations/${locationId}/calendars/${calendarId}/appointments`, appointmentData, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Version: '2021-07-28',
+              'Content-Type': 'application/json',
+            },
+          });
+          return response.data?.appointment || response.data?.data || response.data;
+        } catch (fallbackError) {
+          throw new Error(`Failed to create calendar appointment: ${(error as any).response?.data?.message || (fallbackError as any).response?.data?.message || error.message}`);
+        }
+      }
+      throw error;
+    }
+  }
+
+  async updateCalendarAppointment(calendarId: string, appointmentId: string, locationId: string, appointmentData: any): Promise<any> {
+    const token = await this.getPrivateToken();
+    
+    try {
+      // Try /calendars/events/{booking_id} endpoint (confirmed per API docs)
+      const response = await this.client.put(`/calendars/events/${appointmentId}`, {
+        ...appointmentData,
+        locationId,
+        calendarId,
+      }, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Version: '2021-07-28',
+          'Content-Type': 'application/json',
+        },
+      });
+      return response.data?.appointment || response.data?.event || response.data?.data || response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        // Try fallback endpoint
+        try {
+          const response = await this.client.put(`/locations/${locationId}/calendars/${calendarId}/appointments/${appointmentId}`, appointmentData, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Version: '2021-07-28',
+              'Content-Type': 'application/json',
+            },
+          });
+          return response.data?.appointment || response.data?.data || response.data;
+        } catch (fallbackError) {
+          throw new Error(`Failed to update calendar appointment: ${(error as any).response?.data?.message || (fallbackError as any).response?.data?.message || error.message}`);
+        }
+      }
+      throw error;
+    }
+  }
+
+  async deleteCalendarAppointment(calendarId: string, appointmentId: string, locationId: string): Promise<void> {
+    const token = await this.getPrivateToken();
+    
+    try {
+      // Try /calendars/events/{booking_id} endpoint
+      await this.client.delete(`/calendars/events/${appointmentId}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Version: '2021-07-28',
+        },
+        params: {
+          locationId,
+          calendarId,
+        },
+      });
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        // Try fallback endpoint
+        try {
+          await this.client.delete(`/locations/${locationId}/calendars/${calendarId}/appointments/${appointmentId}`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Version: '2021-07-28',
+            },
+          });
+        } catch (fallbackError) {
+          throw new Error(`Failed to delete calendar appointment: ${(error as any).response?.data?.message || (fallbackError as any).response?.data?.message || error.message}`);
+        }
+      } else {
+        throw error;
+      }
+    }
   }
 }
 

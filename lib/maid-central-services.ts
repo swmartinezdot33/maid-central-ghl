@@ -1,7 +1,7 @@
 import axios, { AxiosError } from 'axios';
 import { getMaidCentralCredentials, type MaidCentralCredentials } from './kv';
 
-const MAID_CENTRAL_API_BASE_URL = process.env.MAID_CENTRAL_API_BASE_URL || 'https://api.maidcentral.com';
+const MAID_CENTRAL_API_BASE_URL = 'https://api.maidcentral.com';
 
 interface TokenResponse {
   access_token: string;
@@ -179,4 +179,10 @@ export class MaidCentralServicesAPI {
 }
 
 export const maidCentralServicesAPI = new MaidCentralServicesAPI();
+
+
+
+
+
+
 

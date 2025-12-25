@@ -43,10 +43,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get quote data
-    const quote = await maidCentralAPI.getQuote(quoteId);
+    // Get quote data from MaidCentral.
+    // NOTE: The previous implementation used a /quotes endpoint which doesn't exist
+    // in the new MaidCentral Lead API. For now, we will treat the quote payload
+    // as opaque and rely on the webhook body or a future Lead/Quote lookup.
+    // const quote = await maidCentralAPI.getQuote(quoteId);
+    const quote: Record<string, any> = { id: quoteId };
     
-    // Automatically map fields - basic fields to native GHL fields, rest as custom fields
+    // Automatically map fields - basic fields to native GHL fields, rest as custom fields.
+    // When we have a full quote payload from MaidCentral, this will map all fields.
     const prefix = config.customFieldPrefix || 'maidcentral_quote_';
     let contactData = ghlAPI.autoMapFields(quote, prefix);
 
