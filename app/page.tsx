@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useGHLIframe } from '@/lib/ghl-iframe-context';
 
 interface ConfigStatus {
   config: {
@@ -31,12 +32,15 @@ interface ConfigStatus {
 }
 
 export default function Home() {
+  const { ghlData, loading: iframeLoading } = useGHLIframe();
   const [status, setStatus] = useState<ConfigStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchStatus();
-  }, []);
+    if (!iframeLoading) {
+      fetchStatus();
+    }
+  }, [iframeLoading, ghlData?.locationId]);
 
   const fetchStatus = async () => {
     try {
@@ -44,8 +48,10 @@ export default function Home() {
       const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout (increased for slow connections)
       
       try {
-        // Load config first (critical path)
-        const configResponse = await fetch('/api/config', { signal: controller.signal });
+        // Load config first (critical path) - include locationId if available
+        const locationId = ghlData?.locationId;
+        const configUrl = locationId ? `/api/config?locationId=${locationId}` : '/api/config';
+        const configResponse = await fetch(configUrl, { signal: controller.signal });
         
         clearTimeout(timeoutId);
         
@@ -144,11 +150,24 @@ export default function Home() {
     );
   }
 
+  const { ghlData, loading: iframeLoading, error: iframeError } = useGHLIframe();
+
   return (
     <div className="container">
       <div className="header">
         <h1>Maid Central → GoHighLevel Integration</h1>
         <p>Sync quotes from Maid Central to GoHighLevel automatically</p>
+        {ghlData?.locationId && (
+          <p style={{ fontSize: '0.9rem', color: '#666', marginTop: '0.5rem' }}>
+            Connected to GHL Location: {ghlData.locationName || ghlData.locationId}
+            {ghlData.userName && ` (User: ${ghlData.userName})`}
+          </p>
+        )}
+        {iframeError && (
+          <p style={{ fontSize: '0.9rem', color: '#dc2626', marginTop: '0.5rem' }}>
+            {iframeError}
+          </p>
+        )}
       </div>
 
       {(status as any)?.error && (

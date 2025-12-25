@@ -6,8 +6,9 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
-    const config = await getIntegrationConfig();
-    const locationId = config?.ghlLocationId || request.nextUrl.searchParams.get('locationId');
+    const locationId = request.nextUrl.searchParams.get('locationId') || 
+                       request.headers.get('x-ghl-location-id') ||
+                       (await getIntegrationConfig())?.ghlLocationId;
 
     if (!locationId) {
       return NextResponse.json(

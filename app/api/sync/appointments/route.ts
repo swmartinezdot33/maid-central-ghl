@@ -4,6 +4,7 @@ import { syncAllAppointments, syncMaidCentralToGHL, syncGHLToMaidCentral } from 
 import { maidCentralAPI } from '@/lib/maid-central';
 import { ghlAPI } from '@/lib/ghl';
 import { getIntegrationConfig } from '@/lib/db';
+import { getLocationId } from '@/lib/request-utils';
 
 /**
  * POST /api/sync/appointments/full
@@ -14,8 +15,16 @@ export async function POST(request: NextRequest) {
     const url = new URL(request.url);
     const action = url.searchParams.get('action') || 'full';
 
+    const locationId = await getLocationId(request);
+    
     if (action === 'full') {
-      const result = await syncAllAppointments();
+      if (!locationId) {
+        return NextResponse.json(
+          { error: 'Location ID is required. Provide it via query param (?locationId=...), header (x-ghl-location-id), or in request body.' },
+          { status: 400 }
+        );
+      }
+      const result = await syncAllAppointments(locationId);
       return NextResponse.json({
         success: true,
         synced: result.synced,
@@ -34,11 +43,18 @@ export async function POST(request: NextRequest) {
       }
 
       const appointment = await maidCentralAPI.getAppointment(appointmentId);
-      const result = await syncMaidCentralToGHL(appointment);
+      const result = await syncMaidCentralToGHL(appointment, locationId);
       
       return NextResponse.json(result);
     } else if (action === 'ghl-to-mc') {
-      const config = await getIntegrationConfig();
+      if (!locationId) {
+        return NextResponse.json(
+          { error: 'Location ID is required. Provide it via query param (?locationId=...), header (x-ghl-location-id), or in request body.' },
+          { status: 400 }
+        );
+      }
+      
+      const config = await getIntegrationConfig(locationId);
       
       if (!config?.ghlCalendarId || !config?.ghlLocationId) {
         return NextResponse.json(
@@ -69,7 +85,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const result = await syncGHLToMaidCentral(appointment);
+      const result = await syncGHLToMaidCentral(appointment, locationId);
       
       return NextResponse.json(result);
     }

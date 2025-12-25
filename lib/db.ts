@@ -89,6 +89,29 @@ export async function initDatabase(): Promise<void> {
       )
     `;
     
+    // Add unique constraint on ghl_location_id if it doesn't exist (for multi-tenant support)
+    // This allows NULL for backward compatibility but ensures uniqueness when location_id is set
+    try {
+      // PostgreSQL doesn't support IF NOT EXISTS for constraints, so we check first
+      const constraintExists = await sql`
+        SELECT constraint_name 
+        FROM information_schema.table_constraints 
+        WHERE table_name = 'integration_config' 
+        AND constraint_name = 'integration_config_location_unique'
+      `;
+      
+      if (constraintExists.length === 0) {
+        await sql`
+          CREATE UNIQUE INDEX integration_config_location_unique 
+          ON integration_config (ghl_location_id) 
+          WHERE ghl_location_id IS NOT NULL
+        `;
+      }
+    } catch (error) {
+      // Constraint might already exist or index creation failed, ignore error
+      console.log('Unique constraint/index might already exist:', error);
+    }
+    
     // Add new columns if they don't exist (for existing databases)
     try {
       await sql`ALTER TABLE integration_config ADD COLUMN IF NOT EXISTS ghl_tag TEXT`;
@@ -197,16 +220,7 @@ export async function initDatabase(): Promise<void> {
       console.log('Appointment sync columns already exist or error adding them:', error);
     }
 
-    // Ensure we have a single integration config row
-    const configExists = await sql`
-      SELECT id FROM integration_config LIMIT 1
-    `;
-    
-    if (configExists.length === 0) {
-      await sql`
-        INSERT INTO integration_config (enabled) VALUES (false)
-      `;
-    }
+    // Note: We no longer create a default config row since location_id is now required
   } catch (error) {
     console.error('Database initialization error:', error);
     throw error;
@@ -356,13 +370,20 @@ export async function getGHLPrivateToken(): Promise<GHLPrivateToken | null> {
 }
 
 // Integration Config
-export async function storeIntegrationConfig(config: IntegrationConfig): Promise<void> {
+export async function storeIntegrationConfig(config: IntegrationConfig, locationId?: string): Promise<void> {
   await initDatabase();
   const sql = getSql();
   
-  // First, ensure config row exists
+  // Use provided locationId or from config
+  const targetLocationId = locationId || config.ghlLocationId;
+  
+  if (!targetLocationId) {
+    throw new Error('Location ID is required to store integration config');
+  }
+  
+  // Check if config exists for this location
   const configExists = await sql`
-    SELECT id FROM integration_config LIMIT 1
+    SELECT id FROM integration_config WHERE ghl_location_id = ${targetLocationId} LIMIT 1
   `;
   
   // Handle tags: convert array to JSON string, or use single tag for backward compatibility
@@ -373,7 +394,7 @@ export async function storeIntegrationConfig(config: IntegrationConfig): Promise
     await sql`
       INSERT INTO integration_config (ghl_location_id, enabled, ghl_tag, ghl_tags, sync_quotes, sync_customers, create_opportunities, auto_create_fields, custom_field_prefix, sync_appointments, ghl_calendar_id, appointment_sync_interval, appointment_conflict_resolution)
       VALUES (
-        ${config.ghlLocationId || null}, 
+        ${targetLocationId}, 
         ${config.enabled}, 
         ${ghlTagSingle || null},
         ${ghlTagsJson || null},
@@ -392,7 +413,6 @@ export async function storeIntegrationConfig(config: IntegrationConfig): Promise
     await sql`
       UPDATE integration_config
       SET 
-        ghl_location_id = ${config.ghlLocationId || null},
         enabled = ${config.enabled},
         ghl_tag = ${ghlTagSingle || null},
         ghl_tags = ${ghlTagsJson || null},
@@ -406,7 +426,7 @@ export async function storeIntegrationConfig(config: IntegrationConfig): Promise
         appointment_sync_interval = ${config.appointmentSyncInterval !== undefined ? config.appointmentSyncInterval : 15},
         appointment_conflict_resolution = ${config.appointmentConflictResolution || 'timestamp'},
         updated_at = NOW()
-      WHERE id = ${configExists[0].id}
+      WHERE ghl_location_id = ${targetLocationId}
     `;
   }
 
@@ -414,15 +434,26 @@ export async function storeIntegrationConfig(config: IntegrationConfig): Promise
   await storeFieldMappings(config.fieldMappings);
 }
 
-export async function getIntegrationConfig(): Promise<IntegrationConfig | null> {
+export async function getIntegrationConfig(locationId?: string): Promise<IntegrationConfig | null> {
   await initDatabase();
   const sql = getSql();
   
-  const result = await sql`
-    SELECT ghl_location_id, enabled, ghl_tag, ghl_tags, sync_quotes, sync_customers, create_opportunities, auto_create_fields, custom_field_prefix, sync_appointments, ghl_calendar_id, appointment_sync_interval, appointment_conflict_resolution
-    FROM integration_config
-    LIMIT 1
-  `;
+  let result;
+  if (locationId) {
+    result = await sql`
+      SELECT ghl_location_id, enabled, ghl_tag, ghl_tags, sync_quotes, sync_customers, create_opportunities, auto_create_fields, custom_field_prefix, sync_appointments, ghl_calendar_id, appointment_sync_interval, appointment_conflict_resolution
+      FROM integration_config
+      WHERE ghl_location_id = ${locationId}
+      LIMIT 1
+    `;
+  } else {
+    // Fallback: get first config (for backward compatibility)
+    result = await sql`
+      SELECT ghl_location_id, enabled, ghl_tag, ghl_tags, sync_quotes, sync_customers, create_opportunities, auto_create_fields, custom_field_prefix, sync_appointments, ghl_calendar_id, appointment_sync_interval, appointment_conflict_resolution
+      FROM integration_config
+      LIMIT 1
+    `;
+  }
 
     if (result.length === 0) {
       return { 

@@ -23,10 +23,11 @@ export async function POST(request: NextRequest) {
     await storeGHLPrivateToken(tokenData);
 
     // Update integration config with location ID
-    const existingConfig = await getIntegrationConfig();
+    const existingConfig = await getIntegrationConfig(locationId);
     const config = existingConfig || {
       fieldMappings: [],
       enabled: false,
+      ghlLocationId: locationId,
       syncQuotes: true,
       syncCustomers: false,
       createOpportunities: true,
@@ -35,7 +36,7 @@ export async function POST(request: NextRequest) {
     };
     
     config.ghlLocationId = locationId;
-    await storeIntegrationConfig(config);
+    await storeIntegrationConfig(config, locationId);
 
     // Test the token by fetching locations
     try {

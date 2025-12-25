@@ -27,9 +27,9 @@ export interface SyncResult {
 /**
  * Sync a single Maid Central appointment to GoHighLevel
  */
-export async function syncMaidCentralToGHL(mcAppointment: any): Promise<SyncResult> {
+export async function syncMaidCentralToGHL(mcAppointment: any, locationId?: string): Promise<SyncResult> {
   try {
-    const config = await getIntegrationConfig();
+    const config = await getIntegrationConfig(locationId);
     
     if (!config?.syncAppointments) {
       return { success: false, error: 'Appointment syncing is disabled' };
@@ -108,9 +108,9 @@ export async function syncMaidCentralToGHL(mcAppointment: any): Promise<SyncResu
 /**
  * Sync a single GoHighLevel appointment to Maid Central
  */
-export async function syncGHLToMaidCentral(ghlAppointment: any): Promise<SyncResult> {
+export async function syncGHLToMaidCentral(ghlAppointment: any, locationId?: string): Promise<SyncResult> {
   try {
-    const config = await getIntegrationConfig();
+    const config = await getIntegrationConfig(locationId);
     
     if (!config?.syncAppointments) {
       return { success: false, error: 'Appointment syncing is disabled' };
@@ -285,13 +285,13 @@ export async function syncGHLToMaidCentral(ghlAppointment: any): Promise<SyncRes
 /**
  * Perform full bidirectional sync of all appointments
  */
-export async function syncAllAppointments(): Promise<{ synced: number; errors: number; results: SyncResult[] }> {
+export async function syncAllAppointments(locationId?: string): Promise<{ synced: number; errors: number; results: SyncResult[] }> {
   const results: SyncResult[] = [];
   let synced = 0;
   let errors = 0;
 
   try {
-    const config = await getIntegrationConfig();
+    const config = await getIntegrationConfig(locationId);
     
     if (!config?.syncAppointments) {
       return { synced: 0, errors: 0, results: [] };
@@ -338,7 +338,7 @@ export async function syncAllAppointments(): Promise<{ synced: number; errors: n
       // - It's new (no sync record)
       // - It's updated (MC modified time > last synced time)
       if (!existingSync || (lastSynced && mcModified > lastSynced)) {
-        const result = await syncMaidCentralToGHL(mcAppointment);
+        const result = await syncMaidCentralToGHL(mcAppointment, locationId);
         results.push(result);
         if (result.success) {
           synced++;
@@ -361,7 +361,7 @@ export async function syncAllAppointments(): Promise<{ synced: number; errors: n
       // - It's updated (GHL modified time > last synced time)
       // AND we haven't already processed it via the MC loop above (bidirectional check)
       if (!existingSync || (lastSynced && ghlModified > lastSynced)) {
-        const result = await syncGHLToMaidCentral(ghlAppointment);
+        const result = await syncGHLToMaidCentral(ghlAppointment, locationId);
         results.push(result);
         if (result.success) {
           synced++;
@@ -384,10 +384,11 @@ export async function syncAllAppointments(): Promise<{ synced: number; errors: n
 export async function resolveConflict(
   mcAppointment: any,
   ghlAppointment: any,
-  strategy: 'maid_central_wins' | 'ghl_wins' | 'timestamp' = 'timestamp'
+  strategy: 'maid_central_wins' | 'ghl_wins' | 'timestamp' = 'timestamp',
+  locationId?: string
 ): Promise<SyncResult> {
   try {
-    const config = await getIntegrationConfig();
+    const config = await getIntegrationConfig(locationId);
     
     if (!config.ghlCalendarId || !config.ghlLocationId) {
       return { success: false, error: 'GHL Calendar or Location ID not configured' };

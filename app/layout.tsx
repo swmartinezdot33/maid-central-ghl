@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import { GHLIframeProvider } from '@/lib/ghl-iframe-context'
 
 export const metadata: Metadata = {
   title: 'Maid Central → GoHighLevel Integration',
@@ -13,7 +14,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <GHLIframeProvider>
+          {children}
+        </GHLIframeProvider>
+      </body>
     </html>
   )
 }

@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 import { getIntegrationConfig, storeIntegrationConfig, getGHLPrivateToken, type IntegrationConfig } from '@/lib/kv';
+import { getLocationId } from '@/lib/request-utils';
 
 export async function GET(request: NextRequest) {
   try {
-    const config = await getIntegrationConfig();
+    const locationId = await getLocationId(request);
+    const config = await getIntegrationConfig(locationId);
     
     // Check GHL connection status - token must exist AND have a valid token value
     let ghlConnected = false;
@@ -56,22 +58,45 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
+    const locationId = await getLocationId(request);
+    
     const body = await request.json();
-    const existingConfig = await getIntegrationConfig();
+    const finalLocationId = locationId || body.locationId || body.ghlLocationId;
+    
+    if (!finalLocationId) {
+      return NextResponse.json(
+        { error: 'Location ID is required. Provide it via query param (?locationId=...), header (x-ghl-location-id), or in request body.' },
+        { status: 400 }
+      );
+    }
+
+    const existingConfig = await getIntegrationConfig(finalLocationId);
     
     const updatedConfig: IntegrationConfig = {
-      ...(existingConfig || { fieldMappings: [], enabled: false }),
+      ...(existingConfig || { 
+        fieldMappings: [], 
+        enabled: false,
+        ghlLocationId: finalLocationId,
+        syncQuotes: true,
+        syncCustomers: false,
+        createOpportunities: true,
+        autoCreateFields: true,
+        customFieldPrefix: 'maidcentral_quote_',
+      }),
       ...body,
+      ghlLocationId: finalLocationId, // Ensure location ID is set
       // Preserve fieldMappings if not provided in update
       fieldMappings: body.fieldMappings || existingConfig?.fieldMappings || [],
     };
 
-    await storeIntegrationConfig(updatedConfig);
+    await storeIntegrationConfig(updatedConfig, finalLocationId);
+
+    await storeIntegrationConfig(updatedConfig, locationId);
     return NextResponse.json({ success: true, config: updatedConfig });
   } catch (error) {
     console.error('Error updating config:', error);
     return NextResponse.json(
-      { error: 'Failed to update config' },
+      { error: error instanceof Error ? error.message : 'Failed to update config' },
       { status: 500 }
     );
   }

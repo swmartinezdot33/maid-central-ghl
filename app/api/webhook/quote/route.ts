@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { maidCentralAPI } from '@/lib/maid-central';
 import { ghlAPI } from '@/lib/ghl';
 import { getIntegrationConfig } from '@/lib/kv';
+import { getLocationId } from '@/lib/request-utils';
 
 // Set max duration for Vercel serverless function (60 seconds for webhook processing)
 export const maxDuration = 60;
@@ -15,7 +16,9 @@ export async function POST(request: NextRequest) {
 
   try {
     // Fast-fail checks first
-    const config = await getIntegrationConfig();
+    // Get locationId from request (iframe context, query param, or header)
+    const locationId = await getLocationId(request);
+    const config = await getIntegrationConfig(locationId);
     
     if (!config?.enabled) {
       return NextResponse.json({ message: 'Integration is disabled' }, { status: 200 });

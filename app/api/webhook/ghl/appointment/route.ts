@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 import { syncGHLToMaidCentral } from '@/lib/appointment-sync';
 import { getIntegrationConfig } from '@/lib/db';
+import { getLocationId } from '@/lib/request-utils';
 
 /**
  * POST /api/webhook/ghl/appointment
@@ -9,7 +10,8 @@ import { getIntegrationConfig } from '@/lib/db';
  */
 export async function POST(request: NextRequest) {
   try {
-    const config = await getIntegrationConfig();
+    const locationId = await getLocationId(request);
+    const config = await getIntegrationConfig(locationId);
     
     if (!config?.enabled || !config?.syncAppointments) {
       return NextResponse.json({ message: 'Integration or appointment syncing is disabled' }, { status: 200 });
@@ -22,7 +24,7 @@ export async function POST(request: NextRequest) {
     // Handle different event types
     if (eventType.includes('created') || eventType.includes('booked')) {
       // New appointment created/booked
-      const result = await syncGHLToMaidCentral(appointment);
+      const result = await syncGHLToMaidCentral(appointment, locationId);
       
       if (result.success) {
         return NextResponse.json({
@@ -38,7 +40,7 @@ export async function POST(request: NextRequest) {
       }
     } else if (eventType.includes('updated') || eventType.includes('modified')) {
       // Appointment updated
-      const result = await syncGHLToMaidCentral(appointment);
+      const result = await syncGHLToMaidCentral(appointment, locationId);
       
       if (result.success) {
         return NextResponse.json({
