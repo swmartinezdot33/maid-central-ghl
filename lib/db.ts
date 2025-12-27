@@ -352,43 +352,37 @@ export async function storeGHLOAuthToken(token: GHLOAuthToken): Promise<void> {
   await initDatabase();
   const sql = getSql();
   
-  const existing = await sql`
-    SELECT id FROM ghl_oauth_tokens WHERE location_id = ${token.locationId} LIMIT 1
+  // Use ON CONFLICT to handle upsert atomically and prevent race conditions
+  // This will INSERT if location_id doesn't exist, or UPDATE if it does
+  await sql`
+    INSERT INTO ghl_oauth_tokens (
+      location_id, access_token, refresh_token, expires_at, 
+      token_type, scope, user_id, company_id, installed_at
+    )
+    VALUES (
+      ${token.locationId},
+      ${token.accessToken},
+      ${token.refreshToken || null},
+      ${token.expiresAt || null},
+      ${token.tokenType || 'Bearer'},
+      ${token.scope || null},
+      ${token.userId || null},
+      ${token.companyId || null},
+      ${token.installedAt}
+    )
+    ON CONFLICT (location_id) 
+    DO UPDATE SET
+      access_token = EXCLUDED.access_token,
+      refresh_token = EXCLUDED.refresh_token,
+      expires_at = EXCLUDED.expires_at,
+      token_type = EXCLUDED.token_type,
+      scope = EXCLUDED.scope,
+      user_id = EXCLUDED.user_id,
+      company_id = EXCLUDED.company_id,
+      updated_at = NOW()
   `;
-
-  if (existing.length > 0) {
-    await sql`
-      UPDATE ghl_oauth_tokens
-      SET 
-        access_token = ${token.accessToken},
-        refresh_token = ${token.refreshToken || null},
-        expires_at = ${token.expiresAt || null},
-        token_type = ${token.tokenType || 'Bearer'},
-        scope = ${token.scope || null},
-        user_id = ${token.userId || null},
-        company_id = ${token.companyId || null},
-        updated_at = NOW()
-      WHERE location_id = ${token.locationId}
-    `;
-  } else {
-    await sql`
-      INSERT INTO ghl_oauth_tokens (
-        location_id, access_token, refresh_token, expires_at, 
-        token_type, scope, user_id, company_id, installed_at
-      )
-      VALUES (
-        ${token.locationId},
-        ${token.accessToken},
-        ${token.refreshToken || null},
-        ${token.expiresAt || null},
-        ${token.tokenType || 'Bearer'},
-        ${token.scope || null},
-        ${token.userId || null},
-        ${token.companyId || null},
-        ${token.installedAt}
-      )
-    `;
-  }
+  
+  console.log('[DB] OAuth token stored/updated for locationId:', token.locationId);
 }
 
 export async function getGHLOAuthToken(locationId: string): Promise<GHLOAuthToken | null> {
