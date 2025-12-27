@@ -199,8 +199,30 @@ export async function GET(request: NextRequest) {
     };
 
     console.log('[OAuth Callback] Storing OAuth token for locationId:', finalLocationId);
+    console.log('[OAuth Callback] Token data to store:', {
+      locationId: oauthToken.locationId,
+      hasAccessToken: !!oauthToken.accessToken,
+      hasRefreshToken: !!oauthToken.refreshToken,
+      expiresAt: oauthToken.expiresAt ? new Date(oauthToken.expiresAt).toISOString() : 'never',
+      tokenType: oauthToken.tokenType,
+      scope: oauthToken.scope,
+      userId: oauthToken.userId,
+      companyId: oauthToken.companyId,
+    });
+    
     await storeGHLOAuthToken(oauthToken);
     console.log('[OAuth Callback] ✅ OAuth token stored successfully');
+    
+    // Verify the token was stored correctly
+    const { getGHLOAuthToken } = await import('@/lib/db');
+    const storedToken = await getGHLOAuthToken(finalLocationId);
+    if (storedToken && storedToken.accessToken) {
+      console.log('[OAuth Callback] ✅ Verification: Token retrieved successfully from database');
+      console.log('[OAuth Callback] Stored token locationId:', storedToken.locationId);
+      console.log('[OAuth Callback] Stored token has access token:', !!storedToken.accessToken);
+    } else {
+      console.error('[OAuth Callback] ❌ Verification FAILED: Token not found in database after storage!');
+    }
 
     // Create or update integration config for this location
     let config = await getIntegrationConfig(finalLocationId);

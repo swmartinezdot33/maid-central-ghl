@@ -62,7 +62,7 @@ function OAuthSuccessContent() {
           </div>
         )}
 
-        {status === 'success' && (
+            {status === 'success' && (
           <div style={{ textAlign: 'center' }}>
             <div style={{ 
               fontSize: '4rem', 
@@ -74,9 +74,24 @@ function OAuthSuccessContent() {
               {message}
             </p>
             {locationId && (
-              <p style={{ marginBottom: '1.5rem', fontSize: '0.9rem', color: '#999' }}>
-                Location ID: {locationId}
-              </p>
+              <>
+                <p style={{ marginBottom: '1rem', fontSize: '0.9rem', color: '#999' }}>
+                  Location ID: <code style={{ backgroundColor: '#f8f9fa', padding: '2px 6px', borderRadius: '2px', fontFamily: 'monospace' }}>{locationId}</code>
+                </p>
+                <p style={{ marginBottom: '1.5rem', fontSize: '0.85rem', color: '#666' }}>
+                  OAuth token and location ID have been stored. Users viewing this app from the custom menu link will automatically use this location's configuration.
+                </p>
+                <p style={{ marginBottom: '1rem', fontSize: '0.85rem' }}>
+                  <a 
+                    href={`/api/auth/oauth/verify?locationId=${locationId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: '#007bff', textDecoration: 'underline' }}
+                  >
+                    Verify Token Storage
+                  </a>
+                </p>
+              </>
             )}
             <div style={{ marginTop: '2rem' }}>
               <Link 
