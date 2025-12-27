@@ -19,9 +19,24 @@ export async function GET(request: NextRequest) {
     const error = request.nextUrl.searchParams.get('error');
 
     if (error) {
-      console.error('[OAuth Callback] OAuth error from GHL:', error);
+      const errorDescription = request.nextUrl.searchParams.get('error_description') || 'No description provided';
+      const errorUri = request.nextUrl.searchParams.get('error_uri');
+      console.error('[OAuth Callback] ============================================');
+      console.error('[OAuth Callback] ❌ OAUTH ERROR FROM GHL');
+      console.error('[OAuth Callback] Error Code:', error);
+      console.error('[OAuth Callback] Error Description:', errorDescription);
+      console.error('[OAuth Callback] Error URI:', errorUri);
+      console.error('[OAuth Callback] All Query Params:', allParams);
+      console.error('[OAuth Callback] Client ID configured:', !!process.env.GHL_CLIENT_ID);
+      console.error('[OAuth Callback] Client Secret configured:', !!process.env.GHL_CLIENT_SECRET);
+      console.error('[OAuth Callback] Redirect URI:', process.env.GHL_REDIRECT_URI || `${process.env.APP_BASE_URL || 'http://localhost:3001'}/api/auth/oauth/callback`);
+      console.error('[OAuth Callback] ============================================');
+      
       const errorUrl = new URL('/oauth-success', process.env.APP_BASE_URL || 'http://localhost:3001');
-      errorUrl.searchParams.set('error', error);
+      errorUrl.searchParams.set('error', `${error}: ${errorDescription}`);
+      if (errorUri) {
+        errorUrl.searchParams.set('error_uri', errorUri);
+      }
       return NextResponse.redirect(errorUrl.toString());
     }
 

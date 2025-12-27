@@ -22,12 +22,16 @@ export async function GET(request: NextRequest) {
     const locationId = request.nextUrl.searchParams.get('locationId');
     
     // Log OAuth initiation for debugging
-    console.log('[OAuth Authorize] Initiating OAuth flow:', {
-      clientId: clientId ? `${clientId.substring(0, 10)}...` : 'missing',
-      redirectUri,
-      locationId,
-      baseUrl,
-    });
+    console.log('[OAuth Authorize] ============================================');
+    console.log('[OAuth Authorize] Initiating OAuth flow');
+    console.log('[OAuth Authorize] Client ID:', clientId ? `${clientId.substring(0, 10)}...${clientId.substring(clientId.length - 4)}` : 'MISSING');
+    console.log('[OAuth Authorize] Redirect URI:', redirectUri);
+    console.log('[OAuth Authorize] Base URL:', baseUrl);
+    console.log('[OAuth Authorize] Location ID (hint):', locationId || 'none');
+    console.log('[OAuth Authorize] Environment check:');
+    console.log('[OAuth Authorize]   - APP_BASE_URL:', process.env.APP_BASE_URL || 'NOT SET');
+    console.log('[OAuth Authorize]   - GHL_REDIRECT_URI:', process.env.GHL_REDIRECT_URI || 'NOT SET (using computed)');
+    console.log('[OAuth Authorize] ============================================');
     
     // GHL OAuth authorization URL
     // Use chooselocation endpoint to force location selection
@@ -36,6 +40,12 @@ export async function GET(request: NextRequest) {
     authUrl.searchParams.set('client_id', clientId);
     authUrl.searchParams.set('redirect_uri', redirectUri);
     authUrl.searchParams.set('scope', 'locations.read contacts.write contacts.read calendars.read calendars.write');
+    
+    console.log('[OAuth Authorize] OAuth URL Parameters:');
+    console.log('[OAuth Authorize]   - response_type: code');
+    console.log('[OAuth Authorize]   - client_id:', clientId ? `${clientId.substring(0, 10)}...` : 'MISSING');
+    console.log('[OAuth Authorize]   - redirect_uri:', redirectUri);
+    console.log('[OAuth Authorize]   - scope: locations.read contacts.write contacts.read calendars.read calendars.write');
     
     // Store locationId in state (if provided) so we can use it as a hint
     // Note: We don't store returnUrl because OAuth is always installed via marketplace or direct link
@@ -72,9 +82,21 @@ export async function GET(request: NextRequest) {
     // Verify redirect URI matches what's configured in GHL marketplace
     // This is critical - any mismatch will cause OAuth to fail silently
     if (!redirectUri.includes('/api/auth/oauth/callback')) {
-      console.error('[OAuth Authorize] WARNING: Redirect URI does not contain /api/auth/oauth/callback');
+      console.error('[OAuth Authorize] ⚠️  WARNING: Redirect URI does not contain /api/auth/oauth/callback');
       console.error('[OAuth Authorize] Make sure GHL_REDIRECT_URI matches your GHL marketplace app settings');
     }
+    
+    // Check for common issues
+    const expectedRedirectUri = 'https://maidcentral.vercel.app/api/auth/oauth/callback';
+    if (redirectUri !== expectedRedirectUri) {
+      console.warn('[OAuth Authorize] ⚠️  Redirect URI mismatch!');
+      console.warn('[OAuth Authorize] Expected:', expectedRedirectUri);
+      console.warn('[OAuth Authorize] Actual:', redirectUri);
+      console.warn('[OAuth Authorize] This will cause OAuth to fail with invalid_request error');
+    }
+    
+    console.log('[OAuth Authorize] Final OAuth URL (client_id hidden):', finalAuthUrl.replace(clientId, 'CLIENT_ID_HIDDEN'));
+    console.log('[OAuth Authorize] Redirecting to GHL OAuth...');
     
     // Redirect to GHL OAuth
     return NextResponse.redirect(finalAuthUrl);
