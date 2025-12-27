@@ -7,17 +7,36 @@ import { getGHLOAuthToken } from '@/lib/db';
 export async function GET(request: NextRequest) {
   try {
     const locationId = getLocationIdFromRequest(request);
-    const config = await getIntegrationConfig(locationId);
     
-    // Check GHL OAuth connection status
+    if (!locationId) {
+      return NextResponse.json(
+        { 
+          error: 'Location ID is required. Provide it via query param (?locationId=...), header (x-ghl-location-id), or in request body.',
+          config: { fieldMappings: [], enabled: false },
+          ghlConnected: false,
+          hasLocationId: false,
+        },
+        { status: 400 }
+      );
+    }
+    
+    console.log('[Config API] Fetching config for locationId:', locationId);
+    const config = await getIntegrationConfig(locationId);
+    console.log('[Config API] Config found:', !!config, 'enabled:', config?.enabled);
+    
+    // Check GHL OAuth connection status - use the locationId from request
     let ghlConnected = false;
     try {
-      if (locationId || config?.ghlLocationId) {
-        const oauthToken = await getGHLOAuthToken(locationId || config?.ghlLocationId || '');
-        // OAuth is connected if token exists, has access token, and is not expired
-        const isExpired = oauthToken?.expiresAt ? Date.now() >= oauthToken.expiresAt : false;
-        ghlConnected = !!(oauthToken && oauthToken.accessToken && !isExpired);
-      }
+      const oauthToken = await getGHLOAuthToken(locationId);
+      // OAuth is connected if token exists, has access token, and is not expired
+      const isExpired = oauthToken?.expiresAt ? Date.now() >= oauthToken.expiresAt : false;
+      ghlConnected = !!(oauthToken && oauthToken.accessToken && !isExpired);
+      console.log('[Config API] OAuth status:', { 
+        hasToken: !!oauthToken, 
+        hasAccessToken: !!oauthToken?.accessToken,
+        isExpired,
+        ghlConnected 
+      });
     } catch (tokenError) {
       // If token fetch fails, assume not connected
       console.warn('[Config] Failed to fetch GHL OAuth token:', tokenError);

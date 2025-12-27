@@ -37,6 +37,7 @@ function SettingsPageContent() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [calendars, setCalendars] = useState<Calendar[]>([]);
   const [loadingCalendars, setLoadingCalendars] = useState(false);
+  const [ghlConnected, setGhlConnected] = useState(false);
 
   useEffect(() => {
     if (ghlData?.locationId) {
@@ -64,6 +65,7 @@ function SettingsPageContent() {
       const data = await response.json();
       
       if (response.ok) {
+        console.log('[Settings] Config loaded:', data);
         setConfig(data.config || {
           enabled: false,
           syncQuotes: true,
@@ -75,6 +77,14 @@ function SettingsPageContent() {
           appointmentSyncInterval: 15,
           appointmentConflictResolution: 'timestamp',
         });
+        // Store OAuth connection status
+        setGhlConnected(data.ghlConnected || false);
+        console.log('[Settings] GHL Connected:', data.ghlConnected);
+      } else {
+        console.error('[Settings] Failed to load config:', data);
+        if (data.error) {
+          setMessage({ type: 'error', text: `Failed to load configuration: ${data.error}` });
+        }
       }
     } catch (error) {
       console.error('Error loading config:', error);
@@ -140,23 +150,44 @@ function SettingsPageContent() {
       return;
     }
     
+    if (!config) {
+      setMessage({ type: 'error', text: 'No configuration to save' });
+      return;
+    }
+    
     setSaving(true);
     setMessage(null);
 
     try {
+      const configToSave = {
+        ...config,
+        ghlLocationId: ghlData.locationId, // Ensure locationId is set
+      };
+      
+      console.log('[Settings] Saving config:', configToSave);
+      console.log('[Settings] Enabled state:', configToSave.enabled);
+      
       const response = await fetch(`/api/config?locationId=${ghlData.locationId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...config, ghlLocationId: ghlData.locationId }),
+        body: JSON.stringify(configToSave),
       });
 
       if (response.ok) {
+        const savedData = await response.json();
+        console.log('[Settings] Config saved successfully:', savedData);
+        
+        // Reload config to ensure we have the latest state
+        await loadConfig();
+        
         setMessage({ type: 'success', text: 'Settings saved successfully!' });
       } else {
         const data = await response.json();
+        console.error('[Settings] Failed to save config:', data);
         setMessage({ type: 'error', text: data.error || 'Failed to save settings' });
       }
     } catch (error) {
+      console.error('[Settings] Error saving config:', error);
       setMessage({ type: 'error', text: 'Failed to save settings' });
     } finally {
       setSaving(false);
@@ -193,6 +224,27 @@ function SettingsPageContent() {
           <Link href="/" className="btn" style={{ backgroundColor: '#e0e0e0' }}>
             ← Back to Home
           </Link>
+        </div>
+
+        <div className="mb-2" style={{ padding: '1rem', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
+          <div className="flex-between mb-2">
+            <div>
+              <strong>GoHighLevel Connection</strong>
+              <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem', color: '#666' }}>
+                OAuth connection status for this location
+              </p>
+            </div>
+            <span className={`status-badge ${ghlConnected ? 'success' : 'error'}`}>
+              {ghlConnected ? 'Connected' : 'Not Connected'}
+            </span>
+          </div>
+          {!ghlConnected && (
+            <div style={{ marginTop: '0.5rem', padding: '0.75rem', backgroundColor: '#fff3cd', borderRadius: '4px', fontSize: '0.85rem' }}>
+              <p style={{ margin: 0 }}>
+                <strong>OAuth not connected.</strong> Please install the app via OAuth in the <Link href="/setup" style={{ color: '#2563eb', textDecoration: 'underline' }}>Setup page</Link>.
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="mb-2" style={{ padding: '1rem', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
