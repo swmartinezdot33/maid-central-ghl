@@ -306,42 +306,29 @@ export function GHLIframeProvider({ children }: { children: React.ReactNode }) {
                 const result = await response.json();
                 console.log('[GHL Iframe] Decryption result:', result);
                 
-                if (result.success && result.data) {
-                  const userData = result.data;
-                  console.log('[GHL Iframe] Decrypted user data:', userData);
+                // The decrypt endpoint returns data directly: { success: true, locationId, userId, ... }
+                // Not nested under result.data
+                if (result.success && result.locationId) {
+                  console.log('[GHL Iframe] ✅ Successfully decrypted user data');
                   
-                  // GHL user data structure: { activeLocation: '...', companyId: '...', userId: '...', ... }
-                  // activeLocation is the locationId we need (this is the key difference!)
-                  const locationId = 
-                    userData.activeLocation ||  // GHL uses 'activeLocation' for the current location
-                    userData.locationId || 
-                    userData.location_id || 
-                    userData.location?.id || 
-                    userData.location?.locationId ||
-                    (userData.context && userData.context.locationId);
+                  // Extract locationId and other user data from the result
+                  const locationId = result.locationId;
                   
                   if (locationId) {
-                    console.log('[GHL Iframe] ✅ Retrieved from decrypted user data:', locationId);
+                    console.log('[GHL Iframe] ✅ Retrieved locationId from decrypted user data:', locationId);
                     setGHLContext({
                       locationId,
-                      userId: userData.userId || userData.user_id || userData.user?.id,
-                      companyId: userData.companyId || userData.company_id,
-                      locationName: userData.locationName || userData.location_name || userData.location?.name,
-                      userName: userData.userName || userData.user_name || userData.user?.name,
-                      userEmail: userData.userEmail || userData.user_email || userData.user?.email,
-                      ...userData,
+                      userId: result.userId,
+                      companyId: result.companyId,
+                      locationName: result.locationName,
+                      userName: result.userName,
+                      userEmail: result.userEmail,
                     });
                   } else {
-                    console.warn('[GHL Iframe] User data decrypted but no locationId found. User data keys:', Object.keys(userData));
-                    console.warn('[GHL Iframe] Available fields:', {
-                      activeLocation: userData.activeLocation,
-                      locationId: userData.locationId,
-                      companyId: userData.companyId,
-                      userId: userData.userId
-                    });
+                    console.warn('[GHL Iframe] Decryption successful but locationId is missing');
                   }
                 } else {
-                  console.warn('[GHL Iframe] Decryption result not successful:', result);
+                  console.warn('[GHL Iframe] Decryption result not successful or missing locationId:', result);
                 }
               } else {
                 const errorData = await response.json().catch(() => ({}));
