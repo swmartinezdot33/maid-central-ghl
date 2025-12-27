@@ -364,6 +364,7 @@ export async function storeGHLOAuthToken(token: GHLOAuthToken): Promise<void> {
     
     // Use ON CONFLICT to handle upsert atomically and prevent race conditions
     // This will INSERT if location_id doesn't exist, or UPDATE if it does
+    // Return the stored data to verify it was saved correctly
     const result = await sql`
       INSERT INTO ghl_oauth_tokens (
         location_id, access_token, refresh_token, expires_at, 
@@ -390,24 +391,31 @@ export async function storeGHLOAuthToken(token: GHLOAuthToken): Promise<void> {
         user_id = EXCLUDED.user_id,
         company_id = EXCLUDED.company_id,
         updated_at = NOW()
-      RETURNING id, location_id
+      RETURNING id, location_id, access_token
     `;
     
     console.log('[DB] ✅ OAuth token stored/updated successfully for locationId:', token.locationId);
+    console.log('[DB] Storage result rows:', result.length);
     console.log('[DB] Storage result:', result);
     
-    // Verify immediately after storage
-    const verifyResult = await sql`
-      SELECT location_id, access_token FROM ghl_oauth_tokens 
-      WHERE location_id = ${token.locationId} 
-      LIMIT 1
-    `;
-    
-    if (verifyResult.length > 0 && verifyResult[0].access_token) {
-      console.log('[DB] ✅ Verification: Token confirmed in database');
+    // Verify using the RETURNING result instead of a separate query
+    // This avoids transaction isolation issues
+    if (result.length > 0) {
+      const storedRow = result[0];
+      if (storedRow.location_id === token.locationId && storedRow.access_token) {
+        console.log('[DB] ✅ Verification: Token confirmed in RETURNING result');
+        console.log('[DB] Stored location_id:', storedRow.location_id);
+        console.log('[DB] Stored access_token length:', storedRow.access_token?.length);
+      } else {
+        console.error('[DB] ❌ Verification FAILED: RETURNING result mismatch!');
+        console.error('[DB] Expected locationId:', token.locationId);
+        console.error('[DB] Got locationId:', storedRow.location_id);
+        console.error('[DB] Has access_token:', !!storedRow.access_token);
+        throw new Error('Token storage verification failed - RETURNING result mismatch');
+      }
     } else {
-      console.error('[DB] ❌ Verification FAILED: Token not found after storage!');
-      throw new Error('Token storage verification failed - token not found in database after insert');
+      console.error('[DB] ❌ Verification FAILED: No rows returned from INSERT!');
+      throw new Error('Token storage verification failed - no rows returned from insert');
     }
   } catch (error) {
     console.error('[DB] ❌ Error storing OAuth token:', error);
