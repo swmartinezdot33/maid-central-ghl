@@ -16,12 +16,16 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  // Extract version_id from client_id (format: version_id-suffix)
+  const versionId = clientId.includes('-') ? clientId.split('-')[0] : clientId;
+
   // Build the exact OAuth URL that will be used
   const authUrl = new URL('https://marketplace.gohighlevel.com/oauth/chooselocation');
   authUrl.searchParams.set('response_type', 'code');
   authUrl.searchParams.set('client_id', clientId);
   authUrl.searchParams.set('redirect_uri', redirectUri);
-  // Scopes must match exactly what's configured in GHL Marketplace app settings
+  authUrl.searchParams.set('version_id', versionId);
+  // GHL expects scopes joined with + signs, not spaces
   const scopes = [
     'locations.readonly',
     'contacts.readonly',
@@ -36,7 +40,7 @@ export async function GET(request: NextRequest) {
     'calendars/resources.readonly',
     'opportunities.readonly',
     'opportunities.write'
-  ].join(' ');
+  ].join('+'); // Use + instead of space to match GHL format
   authUrl.searchParams.set('scope', scopes);
 
   return NextResponse.json({
@@ -44,6 +48,7 @@ export async function GET(request: NextRequest) {
     parameters: {
       response_type: 'code',
       client_id: `${clientId.substring(0, 10)}...${clientId.substring(clientId.length - 4)}`,
+      version_id: versionId,
       redirect_uri: redirectUri,
       scope: scopes,
     },

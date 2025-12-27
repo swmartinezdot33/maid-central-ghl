@@ -18,6 +18,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Extract version_id from client_id (format: version_id-suffix)
+    // Example: 694f40a92c718edc6f886e52-mjnoq3mf -> version_id = 694f40a92c718edc6f886e52
+    const versionId = clientId.includes('-') ? clientId.split('-')[0] : clientId;
+
     // Get locationId from query params (optional - GHL will provide it after location selection)
     const locationId = request.nextUrl.searchParams.get('locationId');
     
@@ -39,8 +43,13 @@ export async function GET(request: NextRequest) {
     authUrl.searchParams.set('response_type', 'code');
     authUrl.searchParams.set('client_id', clientId);
     authUrl.searchParams.set('redirect_uri', redirectUri);
+    // CRITICAL: version_id is required for marketplace apps
+    authUrl.searchParams.set('version_id', versionId);
+    
     // Scopes must match exactly what's configured in GHL Marketplace app settings
     // Based on GHL Marketplace settings, using readonly variants and full scope list
+    // GHL expects scopes joined with + signs, not spaces
+    // This matches the format shown in GHL Marketplace install link
     const scopes = [
       'locations.readonly',
       'contacts.readonly',
@@ -55,12 +64,13 @@ export async function GET(request: NextRequest) {
       'calendars/resources.readonly',
       'opportunities.readonly',
       'opportunities.write'
-    ].join(' ');
+    ].join('+'); // Use + instead of space to match GHL format
     authUrl.searchParams.set('scope', scopes);
     
     console.log('[OAuth Authorize] OAuth URL Parameters:');
     console.log('[OAuth Authorize]   - response_type: code');
     console.log('[OAuth Authorize]   - client_id:', clientId ? `${clientId.substring(0, 10)}...` : 'MISSING');
+    console.log('[OAuth Authorize]   - version_id:', versionId);
     console.log('[OAuth Authorize]   - redirect_uri:', redirectUri);
     console.log('[OAuth Authorize]   - scope:', scopes);
     

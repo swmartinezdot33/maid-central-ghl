@@ -145,9 +145,17 @@ function OAuthSuccessContent() {
                     href="/api/auth/oauth/test-url" 
                     target="_blank" 
                     rel="noopener noreferrer"
+                    style={{ color: '#0066cc', textDecoration: 'underline', marginRight: '1rem' }}
+                  >
+                    Verify OAuth Configuration
+                  </a>
+                  <a 
+                    href={`/api/auth/oauth/capture-error?${new URLSearchParams(window.location.search).toString()}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     style={{ color: '#0066cc', textDecoration: 'underline' }}
                   >
-                    Click here to verify your OAuth configuration
+                    View Detailed Error Info
                   </a>
                 </p>
               </div>
