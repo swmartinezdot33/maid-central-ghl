@@ -1,23 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 import { ghlAPI } from '@/lib/ghl';
-import { getIntegrationConfig } from '@/lib/db';
+import { getLocationIdFromRequest } from '@/lib/request-utils';
 
 export async function GET(request: NextRequest) {
   try {
-    const config = await getIntegrationConfig();
+    const locationId = getLocationIdFromRequest(request);
     
-    if (!config?.ghlLocationId) {
+    if (!locationId) {
       return NextResponse.json(
-        { error: 'GHL Location ID not configured. Please configure your GHL connection first.' },
+        { error: 'Location ID is required. Provide it via query param (?locationId=...), header (x-ghl-location-id), or in request body.' },
         { status: 400 }
       );
     }
 
-    console.log(`[Calendars API] Fetching calendars for location: ${config.ghlLocationId}`);
+    console.log(`[Calendars API] Fetching calendars for location: ${locationId}`);
     
     try {
-      const calendars = await ghlAPI.getCalendars(config.ghlLocationId);
+      const calendars = await ghlAPI.getCalendars(locationId);
       
       console.log(`[Calendars API] Received ${calendars.length} calendars from GHL API`);
       

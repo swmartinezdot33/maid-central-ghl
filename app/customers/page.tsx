@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { LocationGuard } from '@/components/LocationGuard';
+import { useGHLIframe } from '@/lib/ghl-iframe-context';
 
 interface Customer {
   id: string;
@@ -13,6 +15,7 @@ interface Customer {
 }
 
 export default function CustomersPage() {
+  const { ghlData } = useGHLIframe();
   const [loading, setLoading] = useState(false);
   const [lookupId, setLookupId] = useState('');
   const [foundCustomer, setFoundCustomer] = useState<Customer | null>(null);
@@ -79,13 +82,16 @@ export default function CustomersPage() {
   };
 
   const syncCustomerToGHL = async () => {
-    if (!foundCustomer) return;
+    if (!foundCustomer || !ghlData?.locationId) {
+      setMessage({ type: 'error', text: 'Location ID is required. Please ensure you are accessing this app through GoHighLevel.' });
+      return;
+    }
     
     setSyncing(true);
     setMessage(null);
 
     try {
-      const response = await fetch('/api/sync/customer-to-ghl', {
+      const response = await fetch(`/api/sync/customer-to-ghl?locationId=${ghlData.locationId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ customerId: foundCustomer.id }),
@@ -110,7 +116,8 @@ export default function CustomersPage() {
   };
 
   return (
-    <div className="container">
+    <LocationGuard>
+      <div className="container">
       <div className="header">
         <h1>Customer Lookup</h1>
         <p>Lookup a Maid Central customer by Lead ID to view or sync to GoHighLevel.</p>
@@ -216,7 +223,8 @@ export default function CustomersPage() {
           </div>
         )}
       </div>
-    </div>
+      </div>
+    </LocationGuard>
   );
 }
 

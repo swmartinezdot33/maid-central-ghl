@@ -7,12 +7,11 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   try {
     const locationId = request.nextUrl.searchParams.get('locationId') || 
-                       request.headers.get('x-ghl-location-id') ||
-                       (await getIntegrationConfig())?.ghlLocationId;
+                       request.headers.get('x-ghl-location-id');
 
     if (!locationId) {
       return NextResponse.json(
-        { error: 'Location ID is required. Please complete OAuth flow first.' },
+        { error: 'Location ID is required. Provide it via query param (?locationId=...), header (x-ghl-location-id), or in request body.' },
         { status: 400 }
       );
     }

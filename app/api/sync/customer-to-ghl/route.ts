@@ -3,11 +3,21 @@ export const dynamic = 'force-dynamic';
 import { maidCentralCustomersAPI } from '@/lib/maid-central-customers';
 import { ghlAPI } from '@/lib/ghl';
 import { getIntegrationConfig } from '@/lib/kv';
+import { getLocationIdFromRequest } from '@/lib/request-utils';
 
 export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
   try {
+    const locationId = getLocationIdFromRequest(request);
+    
+    if (!locationId) {
+      return NextResponse.json(
+        { error: 'Location ID is required. Provide it via query param (?locationId=...), header (x-ghl-location-id), or in request body.' },
+        { status: 400 }
+      );
+    }
+    
     const body = await request.json();
     const { customerId } = body;
 
@@ -18,7 +28,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const config = await getIntegrationConfig();
+    const config = await getIntegrationConfig(locationId);
     
     if (!config?.enabled) {
       return NextResponse.json(

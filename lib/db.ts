@@ -60,15 +60,38 @@ export async function initDatabase(): Promise<void> {
     await sql`
       CREATE TABLE IF NOT EXISTS maid_central_credentials (
         id SERIAL PRIMARY KEY,
+        location_id TEXT,
         username TEXT NOT NULL,
         password TEXT NOT NULL,
         access_token TEXT,
         refresh_token TEXT,
         token_expires_at BIGINT,
         created_at TIMESTAMP DEFAULT NOW(),
-        updated_at TIMESTAMP DEFAULT NOW()
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(location_id)
       )
     `;
+    
+    // Add location_id column if it doesn't exist (for existing databases)
+    try {
+      await sql`ALTER TABLE maid_central_credentials ADD COLUMN IF NOT EXISTS location_id TEXT`;
+      // Add unique constraint if it doesn't exist
+      const constraintExists = await sql`
+        SELECT constraint_name 
+        FROM information_schema.table_constraints 
+        WHERE table_name = 'maid_central_credentials' 
+        AND constraint_name = 'maid_central_credentials_location_unique'
+      `;
+      if (constraintExists.length === 0) {
+        await sql`
+          CREATE UNIQUE INDEX maid_central_credentials_location_unique 
+          ON maid_central_credentials (location_id) 
+          WHERE location_id IS NOT NULL
+        `;
+      }
+    } catch (error) {
+      console.log('Location ID column/constraint might already exist:', error);
+    }
 
     await sql`
       CREATE TABLE IF NOT EXISTS integration_config (
@@ -242,13 +265,17 @@ export async function initDatabase(): Promise<void> {
   }
 }
 
-// Maid Central Credentials
-export async function storeMaidCentralCredentials(credentials: MaidCentralCredentials): Promise<void> {
+// Maid Central Credentials (now location-specific)
+export async function storeMaidCentralCredentials(credentials: MaidCentralCredentials, locationId?: string): Promise<void> {
   await initDatabase();
   const sql = getSql();
   
+  if (!locationId) {
+    throw new Error('Location ID is required to store Maid Central credentials');
+  }
+  
   const existing = await sql`
-    SELECT id FROM maid_central_credentials LIMIT 1
+    SELECT id FROM maid_central_credentials WHERE location_id = ${locationId} LIMIT 1
   `;
 
   if (existing.length > 0) {
@@ -261,23 +288,48 @@ export async function storeMaidCentralCredentials(credentials: MaidCentralCreden
         refresh_token = ${credentials.refreshToken || null},
         token_expires_at = ${credentials.tokenExpiresAt || null},
         updated_at = NOW()
-      WHERE id = ${existing[0].id}
+      WHERE location_id = ${locationId}
     `;
   } else {
     await sql`
-      INSERT INTO maid_central_credentials (username, password, access_token, refresh_token, token_expires_at)
-      VALUES (${credentials.username}, ${credentials.password}, ${credentials.accessToken || null}, ${credentials.refreshToken || null}, ${credentials.tokenExpiresAt || null})
+      INSERT INTO maid_central_credentials (location_id, username, password, access_token, refresh_token, token_expires_at)
+      VALUES (${locationId}, ${credentials.username}, ${credentials.password}, ${credentials.accessToken || null}, ${credentials.refreshToken || null}, ${credentials.tokenExpiresAt || null})
     `;
   }
 }
 
-export async function getMaidCentralCredentials(): Promise<MaidCentralCredentials | null> {
+export async function getMaidCentralCredentials(locationId?: string): Promise<MaidCentralCredentials | null> {
   await initDatabase();
   const sql = getSql();
+  
+  if (!locationId) {
+    // For backward compatibility, try to get any credentials if no locationId provided
+    // But this should be avoided in production
+    console.warn('[DB] getMaidCentralCredentials called without locationId - this is deprecated');
+    const result = await sql`
+      SELECT username, password, access_token, refresh_token, token_expires_at
+      FROM maid_central_credentials
+      LIMIT 1
+    `;
+    
+    if (result.length === 0) {
+      return null;
+    }
+    
+    const row = result[0];
+    return {
+      username: row.username as string,
+      password: row.password as string,
+      accessToken: row.access_token as string | undefined,
+      refreshToken: row.refresh_token as string | undefined,
+      tokenExpiresAt: row.token_expires_at as number | undefined,
+    };
+  }
   
   const result = await sql`
     SELECT username, password, access_token, refresh_token, token_expires_at
     FROM maid_central_credentials
+    WHERE location_id = ${locationId}
     LIMIT 1
   `;
 

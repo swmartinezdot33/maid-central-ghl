@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { LocationGuard } from '@/components/LocationGuard';
+import { useGHLIframe } from '@/lib/ghl-iframe-context';
 
 interface Quote {
   id: string | number;
@@ -16,6 +18,7 @@ interface Quote {
 }
 
 export default function QuotesPage() {
+  const { ghlData } = useGHLIframe();
   const [loading, setLoading] = useState(false);
   const [lookupId, setLookupId] = useState('');
   const [foundQuote, setFoundQuote] = useState<Quote | null>(null);
@@ -81,14 +84,17 @@ export default function QuotesPage() {
   };
 
   const syncQuoteToGHL = async () => {
-    if (!foundQuote) return;
+    if (!foundQuote || !ghlData?.locationId) {
+      setMessage({ type: 'error', text: 'Location ID is required. Please ensure you are accessing this app through GoHighLevel.' });
+      return;
+    }
     
     setSyncing(true);
     setMessage(null);
 
     try {
       // Use the webhook endpoint which handles the full sync logic including opportunities
-      const response = await fetch('/api/webhook/quote', {
+      const response = await fetch(`/api/webhook/quote?locationId=${ghlData.locationId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ quoteId: foundQuote.id }), // sending Lead ID as quoteId for now as fallback
@@ -113,7 +119,8 @@ export default function QuotesPage() {
   };
 
   return (
-    <div className="container">
+    <LocationGuard>
+      <div className="container">
       <div className="header">
         <h1>Quote Lookup</h1>
         <p>Lookup a Maid Central Lead/Quote by Lead ID to sync to GoHighLevel.</p>
@@ -227,7 +234,8 @@ export default function QuotesPage() {
           </div>
         )}
       </div>
-    </div>
+      </div>
+    </LocationGuard>
   );
 }
 

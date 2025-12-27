@@ -40,3 +40,4 @@ export async function getLocationId(request: NextRequest): Promise<string | unde
   return await getLocationIdFromBody(request);
 }
 
+

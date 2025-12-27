@@ -3,6 +3,7 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useGHLIframe } from '@/lib/ghl-iframe-context';
+import { LocationGuard } from '@/components/LocationGuard';
 
 interface CredentialsStatus {
   credentials: {
@@ -42,8 +43,14 @@ function SetupPageContent() {
   }, [searchParams]);
 
   const fetchCredentials = async () => {
+    if (!ghlData?.locationId) {
+      console.warn('[Setup] Cannot fetch credentials without locationId');
+      setLoading(false);
+      return;
+    }
+    
     try {
-      const response = await fetch('/api/maid-central/credentials');
+      const response = await fetch(`/api/maid-central/credentials?locationId=${ghlData.locationId}`);
       const data = await response.json();
       setMcCredentials(data);
       if (data.credentials?.username) {
@@ -110,11 +117,17 @@ function SetupPageContent() {
 
   const handleSaveCredentials = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!ghlData?.locationId) {
+      setMessage({ type: 'error', text: 'Location ID is required. Please ensure you are accessing this app through GoHighLevel.' });
+      return;
+    }
+    
     setSaving(true);
     setMessage(null);
 
     try {
-      const response = await fetch('/api/maid-central/credentials', {
+      const response = await fetch(`/api/maid-central/credentials?locationId=${ghlData.locationId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
@@ -139,19 +152,9 @@ function SetupPageContent() {
   };
 
 
-  if (loading) {
-    return (
-      <div className="container">
-        <div className="header">
-          <h1>Setup & Configuration</h1>
-          <p>Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="container">
+    <LocationGuard>
+      <div className="container">
       <div className="header">
         <h1>Setup & Configuration</h1>
         <p>Configure your Maid Central and GoHighLevel integrations</p>
@@ -270,7 +273,8 @@ function SetupPageContent() {
           ← Back to Home
         </button>
       </div>
-    </div>
+      </div>
+    </LocationGuard>
   );
 }
 

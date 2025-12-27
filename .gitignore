@@ -36,6 +36,10 @@ SETUP_CREDENTIALS.md
 *.tsbuildinfo
 next-env.d.ts
 
+# Exclude other project folders
+/ultimate-agent/
+/Culture Index/
+
 
 
 

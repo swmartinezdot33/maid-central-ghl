@@ -62,18 +62,80 @@ export function GHLIframeProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
-    // First, check URL parameters (GHL often passes locationId in iframe src)
-    // Check query params, hash, and path
+    // Method 1: Check URL query parameters (synchronous, fastest)
     const urlParams = new URLSearchParams(window.location.search);
     const hashParams = new URLSearchParams(window.location.hash.substring(1));
-    const pathParts = window.location.pathname.split('/');
+    const pathname = window.location.pathname;
     
-    const urlLocationId = 
-      urlParams.get('locationId') || 
-      urlParams.get('location_id') ||
-      hashParams.get('locationId') ||
-      hashParams.get('location_id') ||
-      pathParts.find(part => part.length > 10 && /^[a-zA-Z0-9]+$/.test(part)); // GHL locationIds are usually long alphanumeric strings
+    let urlLocationId: string | null = null;
+    
+    // Try query params first
+    urlLocationId = urlParams.get('locationId') || 
+                   urlParams.get('location_id') || 
+                   urlParams.get('location') ||
+                   urlParams.get('companyId') ||
+                   urlParams.get('company_id');
+    
+    // Try hash params
+    if (!urlLocationId) {
+      urlLocationId = hashParams.get('locationId') || 
+                     hashParams.get('location_id') || 
+                     hashParams.get('location');
+    }
+    
+    // Method 2: Extract from current URL path (e.g., /location/{locationId}/...)
+    if (!urlLocationId) {
+      const locationMatch = pathname.match(/\/location\/([^/]+)/i);
+      if (locationMatch && locationMatch[1]) {
+        urlLocationId = locationMatch[1];
+        console.log('[GHL Iframe] ✅ Found in URL path:', urlLocationId);
+      }
+    }
+    
+    // Method 3: Check document.referrer (MOST RELIABLE for custom menu items)
+    // This is often the best method since GHL loads custom menu items in iframes
+    if (!urlLocationId && document.referrer) {
+      try {
+        const referrerUrl = new URL(document.referrer);
+        
+        // Extract from referrer URL path (e.g., /v2/location/{locationId}/... or /location/{locationId}/...)
+        const referrerPathMatch = referrerUrl.pathname.match(/\/location\/([^/]+)/i);
+        if (referrerPathMatch && referrerPathMatch[1]) {
+          urlLocationId = referrerPathMatch[1];
+          console.log('[GHL Iframe] ✅ Found in document.referrer path:', urlLocationId);
+          console.log('[GHL Iframe] Referrer URL:', document.referrer);
+        }
+        
+        // Check referrer query params
+        if (!urlLocationId) {
+          const referrerParams = new URLSearchParams(referrerUrl.search);
+          urlLocationId = referrerParams.get('locationId') || 
+                         referrerParams.get('location_id') || 
+                         referrerParams.get('location');
+          if (urlLocationId) {
+            console.log('[GHL Iframe] ✅ Found in document.referrer params:', urlLocationId);
+          }
+        }
+      } catch (e) {
+        console.log('[GHL Iframe] Error parsing referrer:', e instanceof Error ? e.message : String(e));
+      }
+    }
+    
+    // Method 4: Check window.name (sometimes used for iframe communication)
+    if (!urlLocationId && window.name) {
+      try {
+        const nameData = JSON.parse(window.name);
+        if (nameData.locationId || nameData.location_id || nameData.location) {
+          urlLocationId = nameData.locationId || nameData.location_id || nameData.location;
+          console.log('[GHL Iframe] ✅ Found in window.name:', urlLocationId);
+        }
+      } catch (e) {
+        // window.name might be a plain string
+        if (window.name.length > 10 && window.name.length < 50) {
+          console.log('[GHL Iframe] ⚠️ window.name might be locationId:', window.name);
+        }
+      }
+    }
     
     const urlUserId = 
       urlParams.get('userId') || 
@@ -83,10 +145,15 @@ export function GHLIframeProvider({ children }: { children: React.ReactNode }) {
 
     if (urlLocationId) {
       console.log('[GHL Iframe] Found locationId in URL:', urlLocationId);
+      console.log('[GHL Iframe] Full URL:', window.location.href);
+      console.log('[GHL Iframe] Pathname:', window.location.pathname);
+      hasLocationIdRef.current = true;
       setGHLContext({
         locationId: urlLocationId,
         userId: urlUserId || undefined,
       });
+      // Don't wait for postMessage if we already have locationId from URL
+      // Still listen for postMessage to get additional user data
     }
 
     // Check sessionStorage for cached data
@@ -121,7 +188,10 @@ export function GHLIframeProvider({ children }: { children: React.ReactNode }) {
         data: event.data,
       });
 
-      // Verify origin is from GHL domains
+      // Log all message origins for debugging
+      console.log('[GHL Iframe] Message received from origin:', event.origin);
+      
+      // Verify origin is from GHL domains (but be lenient for debugging)
       const allowedOrigins = [
         'https://app.gohighlevel.com',
         'https://app.leadconnectorhq.com',
@@ -129,11 +199,13 @@ export function GHLIframeProvider({ children }: { children: React.ReactNode }) {
         'https://localhost', // For development
       ];
       
-      // In production, you should verify origin:
-      // if (!allowedOrigins.some(origin => event.origin.startsWith(origin))) {
-      //   console.warn('[GHL Iframe] Message from untrusted origin:', event.origin);
-      //   return;
-      // }
+      // Check if origin matches (but don't block - just warn)
+      const isAllowedOrigin = allowedOrigins.some(origin => event.origin.startsWith(origin));
+      if (!isAllowedOrigin && event.origin !== window.location.origin) {
+        console.warn('[GHL Iframe] Message from potentially untrusted origin:', event.origin);
+        console.warn('[GHL Iframe] Allowed origins:', allowedOrigins);
+        // Don't return - still process the message for debugging
+      }
 
       try {
         let data = event.data;
@@ -150,6 +222,8 @@ export function GHLIframeProvider({ children }: { children: React.ReactNode }) {
         // Handle GHL's official REQUEST_USER_DATA_RESPONSE
         if (data.message === "REQUEST_USER_DATA_RESPONSE" && data.payload) {
           console.log('[GHL Iframe] Received encrypted user data from GHL');
+          console.log('[GHL Iframe] Encrypted data type:', typeof data.payload);
+          console.log('[GHL Iframe] Encrypted data length:', data.payload?.length || 'N/A');
           
           // Send encrypted data to our backend for decryption
           fetch('/api/ghl/iframe-context/decrypt', {
@@ -159,28 +233,45 @@ export function GHLIframeProvider({ children }: { children: React.ReactNode }) {
           })
             .then(async (response) => {
               if (response.ok) {
-                const userData = await response.json();
-                console.log('[GHL Iframe] Decrypted user data:', userData);
+                const result = await response.json();
+                console.log('[GHL Iframe] Decryption result:', result);
                 
-                // Extract locationId and other data from decrypted response
-                const locationId = 
-                  userData.locationId || 
-                  userData.location_id || 
-                  userData.location?.id || 
-                  userData.location?.locationId;
-                
-                if (locationId) {
-                  setGHLContext({
-                    locationId,
-                    userId: userData.userId || userData.user_id || userData.user?.id,
-                    companyId: userData.companyId || userData.company_id,
-                    locationName: userData.locationName || userData.location_name || userData.location?.name,
-                    userName: userData.userName || userData.user_name || userData.user?.name,
-                    userEmail: userData.userEmail || userData.user_email || userData.user?.email,
-                    ...userData,
-                  });
+                if (result.success && result.data) {
+                  const userData = result.data;
+                  console.log('[GHL Iframe] Decrypted user data:', userData);
+                  
+                  // GHL user data structure: { activeLocation: '...', companyId: '...', userId: '...', ... }
+                  // activeLocation is the locationId we need (this is the key difference!)
+                  const locationId = 
+                    userData.activeLocation ||  // GHL uses 'activeLocation' for the current location
+                    userData.locationId || 
+                    userData.location_id || 
+                    userData.location?.id || 
+                    userData.location?.locationId ||
+                    (userData.context && userData.context.locationId);
+                  
+                  if (locationId) {
+                    console.log('[GHL Iframe] ✅ Retrieved from decrypted user data:', locationId);
+                    setGHLContext({
+                      locationId,
+                      userId: userData.userId || userData.user_id || userData.user?.id,
+                      companyId: userData.companyId || userData.company_id,
+                      locationName: userData.locationName || userData.location_name || userData.location?.name,
+                      userName: userData.userName || userData.user_name || userData.user?.name,
+                      userEmail: userData.userEmail || userData.user_email || userData.user?.email,
+                      ...userData,
+                    });
+                  } else {
+                    console.warn('[GHL Iframe] User data decrypted but no locationId found. User data keys:', Object.keys(userData));
+                    console.warn('[GHL Iframe] Available fields:', {
+                      activeLocation: userData.activeLocation,
+                      locationId: userData.locationId,
+                      companyId: userData.companyId,
+                      userId: userData.userId
+                    });
+                  }
                 } else {
-                  console.warn('[GHL Iframe] No locationId in decrypted user data');
+                  console.warn('[GHL Iframe] Decryption result not successful:', result);
                 }
               } else {
                 const errorData = await response.json().catch(() => ({}));
@@ -276,32 +367,26 @@ export function GHLIframeProvider({ children }: { children: React.ReactNode }) {
 
     // Try to get locationId from various sources
     const tryGetFromParent = () => {
-      try {
-        if (window.parent && window.parent !== window) {
-          // Try to access parent window properties (may be blocked by CORS)
-          const parentUrl = window.parent.location?.href;
-          if (parentUrl) {
-            const parentParams = new URL(parentUrl);
-            const parentLocationId = parentParams.searchParams.get('locationId') || 
-                                   parentParams.searchParams.get('location_id');
-            if (parentLocationId) {
-              console.log('[GHL Iframe] Found locationId from parent URL:', parentLocationId);
-              return parentLocationId;
-            }
-          }
-        }
-      } catch (e) {
-        // CORS will block this, that's expected
-        console.log('[GHL Iframe] Cannot access parent window (CORS):', e instanceof Error ? e.message : String(e));
-      }
+      // Note: CORS will block parent window access, so we skip this
+      // Instead, rely on URL parsing and postMessage
       
       // Try document.referrer (the URL that loaded this iframe)
       try {
         if (document.referrer) {
           const referrerUrl = new URL(document.referrer);
-          const referrerLocationId = referrerUrl.searchParams.get('locationId') || 
-                                    referrerUrl.searchParams.get('location_id') ||
-                                    referrerUrl.pathname.match(/\/location\/([a-zA-Z0-9]+)/)?.[1];
+          
+          // Try query params
+          let referrerLocationId = referrerUrl.searchParams.get('locationId') || 
+                                   referrerUrl.searchParams.get('location_id');
+          
+          // Try path pattern /location/{locationId}/
+          if (!referrerLocationId) {
+            const locationMatch = referrerUrl.pathname.match(/\/location\/([a-zA-Z0-9]+)/i);
+            if (locationMatch && locationMatch[1]) {
+              referrerLocationId = locationMatch[1];
+            }
+          }
+          
           if (referrerLocationId) {
             console.log('[GHL Iframe] Found locationId from referrer:', referrerLocationId);
             return referrerLocationId;
@@ -315,12 +400,41 @@ export function GHLIframeProvider({ children }: { children: React.ReactNode }) {
     };
 
     // Request user data from GHL parent using the official GHL protocol
-    const requestGHLUserData = () => {
-      if (window.parent && window.parent !== window) {
-        console.log('[GHL Iframe] Requesting user data from GHL parent...');
-        // Use GHL's official postMessage protocol
-        window.parent.postMessage({ message: "REQUEST_USER_DATA" }, "*");
-      }
+    // Use Promise-based approach like Culture Index (set up listener BEFORE sending)
+    const requestGHLUserData = (): Promise<void> => {
+      return new Promise((resolve) => {
+        if (window.parent && window.parent !== window) {
+          console.log('[GHL Iframe] Requesting user data from GHL parent...');
+          console.log('[GHL Iframe] Current origin:', window.location.origin);
+          console.log('[GHL Iframe] Parent window exists:', !!window.parent);
+          
+          // Set up message listener BEFORE sending (critical for timing)
+          const messageHandler = (event: MessageEvent) => {
+            // This will be handled by the main handleMessage function
+            // We just need to ensure listener is set up before sending
+          };
+          
+          // Add listener
+          window.addEventListener('message', messageHandler);
+          
+          // Send request using official GHL format
+          try {
+            console.log('[GHL Iframe] Sending postMessage: { message: "REQUEST_USER_DATA" }');
+            window.parent.postMessage({ message: 'REQUEST_USER_DATA' }, '*');
+            
+            // Resolve after a short delay to allow message to be sent
+            setTimeout(() => {
+              resolve();
+            }, 100);
+          } catch (e) {
+            console.warn('[GHL Iframe] Failed to send postMessage:', e);
+            resolve();
+          }
+        } else {
+          console.warn('[GHL Iframe] Not in iframe or parent window not accessible');
+          resolve();
+        }
+      });
     };
 
     // Listen for messages
@@ -334,18 +448,33 @@ export function GHLIframeProvider({ children }: { children: React.ReactNode }) {
       });
     }
 
-    // Request user data after a short delay to ensure parent is ready
-    const requestTimeout = setTimeout(requestGHLUserData, 100);
+    // Request user data multiple times with delays to ensure parent is ready
+    // GHL might load the iframe before the parent is ready to receive messages
+    requestGHLUserData(); // Try immediately
     
-    // Also try immediately (GHL might be ready)
-    requestGHLUserData();
+    const requestTimeout1 = setTimeout(requestGHLUserData, 100);
+    const requestTimeout2 = setTimeout(requestGHLUserData, 500);
+    const requestTimeout3 = setTimeout(requestGHLUserData, 1000);
+    const requestTimeout4 = setTimeout(requestGHLUserData, 2000);
 
     // Set timeout to stop loading if no message received
+    // But only if we haven't found locationId from URL
     const timeout = setTimeout(() => {
       if (!hasLocationIdRef.current && !urlLocationId && !sessionStorage.getItem('ghl_locationId')) {
         console.warn('[GHL Iframe] No locationId received after 5 seconds');
+        console.warn('[GHL Iframe] Current URL:', window.location.href);
+        console.warn('[GHL Iframe] Pathname:', window.location.pathname);
+        console.warn('[GHL Iframe] Search:', window.location.search);
+        console.warn('[GHL Iframe] Referrer:', document.referrer);
         setError('No GHL context received. Make sure the app is loaded in a GHL iframe.');
         setLoading(false);
+      } else if (urlLocationId && !hasLocationIdRef.current) {
+        // We have locationId from URL but haven't set it yet - set it now
+        console.log('[GHL Iframe] Setting locationId from URL after timeout check');
+        setGHLContext({
+          locationId: urlLocationId,
+          userId: urlUserId || undefined,
+        });
       }
     }, 5000);
 
@@ -363,7 +492,10 @@ export function GHLIframeProvider({ children }: { children: React.ReactNode }) {
     return () => {
       window.removeEventListener('message', handleMessage);
       clearTimeout(timeout);
-      clearTimeout(requestTimeout);
+      clearTimeout(requestTimeout1);
+      clearTimeout(requestTimeout2);
+      clearTimeout(requestTimeout3);
+      clearTimeout(requestTimeout4);
       if (typeof window !== 'undefined') {
         delete (window as any).__ghlSetLocationId;
       }

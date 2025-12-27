@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useGHLIframe } from '@/lib/ghl-iframe-context';
+import { LocationGuard } from '@/components/LocationGuard';
 
 interface ConfigStatus {
   config: {
@@ -37,20 +38,25 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!iframeLoading) {
+    if (!iframeLoading && ghlData?.locationId) {
       fetchStatus();
     }
   }, [iframeLoading, ghlData?.locationId]);
 
   const fetchStatus = async () => {
+    if (!ghlData?.locationId) {
+      console.warn('[Home] Cannot fetch status without locationId');
+      return;
+    }
+    
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout (increased for slow connections)
       
       try {
-        // Load config first (critical path) - include locationId if available
-        const locationId = ghlData?.locationId;
-        const configUrl = locationId ? `/api/config?locationId=${locationId}` : '/api/config';
+        // Load config first (critical path) - locationId is required
+        const locationId = ghlData.locationId;
+        const configUrl = `/api/config?locationId=${locationId}`;
         const configResponse = await fetch(configUrl, { signal: controller.signal });
         
         clearTimeout(timeoutId);
@@ -139,19 +145,9 @@ export default function Home() {
     }
   };
 
-  if (loading || iframeLoading) {
-    return (
-      <div className="container">
-        <div className="header">
-          <h1>Maid Central → GoHighLevel Integration</h1>
-          <p>Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="container">
+    <LocationGuard>
+      <div className="container">
       <div className="header">
         <h1>Maid Central → GoHighLevel Integration</h1>
         <p>Sync quotes from Maid Central to GoHighLevel automatically</p>
@@ -378,7 +374,8 @@ export default function Home() {
           <strong>Note:</strong> Manual sync is currently the only option. We're working on adding automatic polling in a future update.
         </div>
       </div>
-    </div>
+      </div>
+    </LocationGuard>
   );
 }
 

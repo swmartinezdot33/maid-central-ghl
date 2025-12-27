@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 import { getIntegrationConfig, initDatabase } from '@/lib/db';
+import { getLocationIdFromRequest } from '@/lib/request-utils';
 
 /**
  * GET /api/sync/appointments/status
@@ -8,7 +9,16 @@ import { getIntegrationConfig, initDatabase } from '@/lib/db';
  */
 export async function GET(request: NextRequest) {
   try {
-    const config = await getIntegrationConfig();
+    const locationId = getLocationIdFromRequest(request);
+    
+    if (!locationId) {
+      return NextResponse.json(
+        { error: 'Location ID is required. Provide it via query param (?locationId=...), header (x-ghl-location-id), or in request body.' },
+        { status: 400 }
+      );
+    }
+    
+    const config = await getIntegrationConfig(locationId);
 
     // Optimize: Only fetch sync stats if appointment syncing is enabled
     // Use direct SQL queries instead of getAllAppointmentSyncs() to avoid loading all records
@@ -57,6 +67,7 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
 
 
 

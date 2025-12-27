@@ -2,9 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 import { storeMaidCentralCredentials, type MaidCentralCredentials } from '@/lib/kv';
 import { maidCentralAPI } from '@/lib/maid-central';
+import { getLocationIdFromRequest } from '@/lib/request-utils';
 
 export async function POST(request: NextRequest) {
   try {
+    const locationId = getLocationIdFromRequest(request);
+    
+    if (!locationId) {
+      return NextResponse.json(
+        { error: 'Location ID is required. Provide it via query param (?locationId=...), header (x-ghl-location-id), or in request body.' },
+        { status: 400 }
+      );
+    }
+    
     const body = await request.json();
     const { username, password } = body;
 
@@ -20,7 +30,7 @@ export async function POST(request: NextRequest) {
       password,
     };
 
-    await storeMaidCentralCredentials(credentials);
+    await storeMaidCentralCredentials(credentials, locationId);
 
     // Test the credentials by attempting authentication
     try {
@@ -55,8 +65,17 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    const locationId = getLocationIdFromRequest(request);
+    
+    if (!locationId) {
+      return NextResponse.json(
+        { error: 'Location ID is required. Provide it via query param (?locationId=...), header (x-ghl-location-id), or in request body.' },
+        { status: 400 }
+      );
+    }
+    
     const { getMaidCentralCredentials } = await import('@/lib/kv');
-    const credentials = await getMaidCentralCredentials();
+    const credentials = await getMaidCentralCredentials(locationId);
     
     if (!credentials) {
       return NextResponse.json({ credentials: null });

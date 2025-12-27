@@ -55,11 +55,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Extract locationId and other user data
+    // GHL uses 'activeLocation' for the current location (this is the key!)
     const locationId = 
+      userData.activeLocation ||  // GHL uses 'activeLocation' for the current location
       userData.locationId || 
       userData.location_id || 
       userData.location?.id || 
-      userData.location?.locationId;
+      userData.location?.locationId ||
+      (userData.context && userData.context.locationId);
 
     if (!locationId) {
       return NextResponse.json(
@@ -118,4 +121,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
 

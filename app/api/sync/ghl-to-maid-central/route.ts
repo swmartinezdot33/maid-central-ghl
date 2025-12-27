@@ -4,6 +4,7 @@ import { ghlAPI } from '@/lib/ghl';
 import { maidCentralCustomersAPI } from '@/lib/maid-central-customers';
 import { maidCentralAPI } from '@/lib/maid-central';
 import { getIntegrationConfig, getFieldMappings } from '@/lib/kv';
+import { getLocationIdFromRequest } from '@/lib/request-utils';
 import { neon } from '@neondatabase/serverless';
 
 function getSql() {
@@ -17,6 +18,15 @@ export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
   try {
+    const locationId = getLocationIdFromRequest(request);
+    
+    if (!locationId) {
+      return NextResponse.json(
+        { error: 'Location ID is required. Provide it via query param (?locationId=...), header (x-ghl-location-id), or in request body.' },
+        { status: 400 }
+      );
+    }
+    
     const body = await request.json();
     const { contactId, quoteId } = body;
 
@@ -27,7 +37,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const config = await getIntegrationConfig();
+    const config = await getIntegrationConfig(locationId);
     if (!config?.enabled || !config.ghlLocationId) {
       return NextResponse.json(
         { error: 'Integration is not enabled or GHL Location ID is not configured' },
@@ -37,7 +47,7 @@ export async function POST(request: NextRequest) {
 
     if (contactId) {
       // Sync GHL contact to Maid Central customer
-      const contact = await ghlAPI.getContact(config.ghlLocationId, contactId);
+      const contact = await ghlAPI.getContact(locationId, contactId);
       const mappings = await getFieldMappings();
       
       const customerData: Record<string, any> = {};
@@ -77,6 +87,7 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
 
 
 

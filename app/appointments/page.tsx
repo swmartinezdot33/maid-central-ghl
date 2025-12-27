@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { LocationGuard } from '@/components/LocationGuard';
+import { useGHLIframe } from '@/lib/ghl-iframe-context';
 
 interface AppointmentSync {
   id?: number;
@@ -44,6 +46,7 @@ interface MaidCentralAppointment {
 }
 
 export default function AppointmentsPage() {
+  const { ghlData } = useGHLIframe();
   const [syncs, setSyncs] = useState<AppointmentSync[]>([]);
   const [mcAppointments, setMcAppointments] = useState<MaidCentralAppointment[]>([]);
   const [ghlAppointments, setGhlAppointments] = useState<any[]>([]);
@@ -59,15 +62,23 @@ export default function AppointmentsPage() {
   const [foundAppointment, setFoundAppointment] = useState<MaidCentralAppointment | null>(null);
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (ghlData?.locationId) {
+      loadData();
+    }
+  }, [ghlData?.locationId]);
 
   const loadData = async () => {
+    if (!ghlData?.locationId) {
+      console.warn('[Appointments] Cannot load data without locationId');
+      setLoading(false);
+      return;
+    }
+    
     try {
       setLoading(true);
       
       // Load sync status
-      const statusResponse = await fetch('/api/sync/appointments/status');
+      const statusResponse = await fetch(`/api/sync/appointments/status?locationId=${ghlData.locationId}`);
       if (statusResponse.ok) {
         const statusData = await statusResponse.json();
         setStatus({
@@ -116,13 +127,18 @@ export default function AppointmentsPage() {
   };
 
   const loadGhlAppointments = async () => {
+    if (!ghlData?.locationId) {
+      console.warn('[Appointments] Cannot load GHL appointments without locationId');
+      return;
+    }
+    
     try {
       setLoadingGhlAppointments(true);
       // Fetch 30 days past and future by default
       const startDate = new Date(Date.now() - 30 * 86400000).toISOString();
       const endDate = new Date(Date.now() + 30 * 86400000).toISOString();
       
-      const response = await fetch(`/api/ghl/appointments?startDate=${startDate}&endDate=${endDate}`);
+      const response = await fetch(`/api/ghl/appointments?locationId=${ghlData.locationId}&startDate=${startDate}&endDate=${endDate}`);
       const data = await response.json();
       
       if (response.ok) {
@@ -185,9 +201,14 @@ export default function AppointmentsPage() {
   };
 
   const handleSyncAppointment = async (appointmentId: string | number) => {
+    if (!ghlData?.locationId) {
+      alert('Location ID is required. Please ensure you are accessing this app through GoHighLevel.');
+      return;
+    }
+    
     try {
       setSyncingAppointmentId(appointmentId);
-      const response = await fetch('/api/sync/appointments?action=mc-to-ghl', {
+      const response = await fetch(`/api/sync/appointments?locationId=${ghlData.locationId}&action=mc-to-ghl`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ appointmentId }),
@@ -209,9 +230,14 @@ export default function AppointmentsPage() {
   };
 
   const handleFullSync = async () => {
+    if (!ghlData?.locationId) {
+      alert('Location ID is required. Please ensure you are accessing this app through GoHighLevel.');
+      return;
+    }
+    
     try {
       setSyncing(true);
-      const response = await fetch('/api/sync/appointments?action=full', { method: 'POST' });
+      const response = await fetch(`/api/sync/appointments?locationId=${ghlData.locationId}&action=full`, { method: 'POST' });
       const data = await response.json();
       
       if (response.ok) {
@@ -240,7 +266,8 @@ export default function AppointmentsPage() {
   }
 
   return (
-    <div className="container">
+    <LocationGuard>
+      <div className="container">
       <div className="header">
         <h1>Appointment Sync</h1>
         <p>Manage synchronized appointments between Maid Central and GoHighLevel</p>
@@ -499,7 +526,8 @@ export default function AppointmentsPage() {
           </div>
         )}
       </div>
-    </div>
+      </div>
+    </LocationGuard>
   );
 }
 
