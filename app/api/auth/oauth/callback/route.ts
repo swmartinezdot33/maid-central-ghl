@@ -92,19 +92,63 @@ export async function GET(request: NextRequest) {
                           }
                         })() : null);
 
-    // If still no locationId, check if it's in the token response body
-    if (!finalLocationId && tokenData) {
-      console.log('[OAuth Callback] Searching token response for locationId. Full response:', JSON.stringify(tokenData, null, 2));
+    // If still no locationId, use the access token to fetch locations from GHL API
+    if (!finalLocationId) {
+      console.log('[OAuth Callback] No locationId in response, fetching from GHL API...');
+      console.log('[OAuth Callback] Token data keys:', Object.keys(tokenData || {}));
+      console.log('[OAuth Callback] Full token response:', JSON.stringify(tokenData, null, 2));
+      
+      try {
+        // Use the access token to get locations
+        const accessToken = tokenData.access_token;
+        if (accessToken) {
+          console.log('[OAuth Callback] Making API call to get locations...');
+          const locationsResponse = await fetch('https://services.leadconnectorhq.com/locations/', {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Version': '2021-07-28',
+              'Content-Type': 'application/json',
+            },
+          });
+
+          if (locationsResponse.ok) {
+            const locationsData = await locationsResponse.json();
+            console.log('[OAuth Callback] Locations API response:', JSON.stringify(locationsData, null, 2));
+            
+            // Try to extract locationId from locations response
+            // GHL may return locations in different formats
+            if (locationsData.locations && Array.isArray(locationsData.locations) && locationsData.locations.length > 0) {
+              finalLocationId = locationsData.locations[0].id || locationsData.locations[0].locationId;
+              console.log('[OAuth Callback] Found locationId from locations API:', finalLocationId);
+            } else if (locationsData.location && locationsData.location.id) {
+              finalLocationId = locationsData.location.id;
+              console.log('[OAuth Callback] Found locationId from location object:', finalLocationId);
+            } else if (locationsData.id) {
+              finalLocationId = locationsData.id;
+              console.log('[OAuth Callback] Found locationId from direct response:', finalLocationId);
+            } else if (Array.isArray(locationsData) && locationsData.length > 0) {
+              finalLocationId = locationsData[0].id || locationsData[0].locationId;
+              console.log('[OAuth Callback] Found locationId from array response:', finalLocationId);
+            }
+          } else {
+            const errorText = await locationsResponse.text();
+            console.error('[OAuth Callback] Failed to fetch locations:', locationsResponse.status, errorText);
+          }
+        }
+      } catch (apiError) {
+        console.error('[OAuth Callback] Error fetching locations from API:', apiError);
+      }
     }
 
     if (!finalLocationId) {
-      console.error('[OAuth Callback] No locationId found. Code:', code, 'State:', state, 'Token data:', tokenData);
+      console.error('[OAuth Callback] No locationId found after all attempts. Code:', code, 'State:', state);
       const errorUrl = new URL('/oauth-success', process.env.APP_BASE_URL || 'http://localhost:3001');
-      errorUrl.searchParams.set('error', `no_location_id: ${JSON.stringify({ code: !!code, state, tokenKeys: Object.keys(tokenData || {}) })}`);
+      errorUrl.searchParams.set('error', `no_location_id: Unable to determine location ID from OAuth response or API call`);
       return NextResponse.redirect(errorUrl.toString());
     }
 
-    console.log('[OAuth Callback] Using locationId:', finalLocationId);
+    console.log('[OAuth Callback] ✅ Using locationId:', finalLocationId);
 
     // Note: We don't use returnUrl anymore because OAuth is always installed via marketplace or direct link
     // The callback will redirect to the setup page to complete configuration
