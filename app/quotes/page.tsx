@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { LocationGuard } from '@/components/LocationGuard';
+import { OAuthGuard } from '@/components/OAuthGuard';
 import { useGHLIframe } from '@/lib/ghl-iframe-context';
 
 interface Quote {
@@ -120,6 +121,7 @@ export default function QuotesPage() {
 
   return (
     <LocationGuard>
+      <OAuthGuard>
       <div className="container">
       <div className="header">
         <h1>Quote Lookup</h1>
@@ -235,6 +237,7 @@ export default function QuotesPage() {
         )}
       </div>
       </div>
+      </OAuthGuard>
     </LocationGuard>
   );
 }

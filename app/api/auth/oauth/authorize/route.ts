@@ -18,18 +18,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get locationId and returnUrl from query params
+    // Get locationId from query params (optional - GHL will provide it after location selection)
     const locationId = request.nextUrl.searchParams.get('locationId');
-    const returnUrl = request.nextUrl.searchParams.get('returnUrl') || 
-                     request.headers.get('referer') || // Try to get from referer
-                     null;
     
     // Log OAuth initiation for debugging
     console.log('[OAuth Authorize] Initiating OAuth flow:', {
       clientId: clientId ? `${clientId.substring(0, 10)}...` : 'missing',
       redirectUri,
       locationId,
-      returnUrl,
       baseUrl,
     });
     
@@ -41,14 +37,12 @@ export async function GET(request: NextRequest) {
     authUrl.searchParams.set('redirect_uri', redirectUri);
     authUrl.searchParams.set('scope', 'locations.read contacts.write contacts.read calendars.read calendars.write');
     
-    // Store locationId and returnUrl in state so we can retrieve them after OAuth
-    // Use a simple format that GHL can handle
-    const stateData: { locationId?: string; returnUrl?: string } = {};
+    // Store locationId in state (if provided) so we can use it as a hint
+    // Note: We don't store returnUrl because OAuth is always installed via marketplace or direct link
+    // The callback will redirect to the setup page or GHL dashboard
+    const stateData: { locationId?: string } = {};
     if (locationId) {
       stateData.locationId = locationId;
-    }
-    if (returnUrl) {
-      stateData.returnUrl = returnUrl;
     }
     
     // Encode state as base64 to avoid URL encoding issues

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useGHLIframe } from '@/lib/ghl-iframe-context';
 import { LocationGuard } from '@/components/LocationGuard';
+import { OAuthGuard } from '@/components/OAuthGuard';
 
 interface ConfigStatus {
   config: {
@@ -147,6 +148,7 @@ export default function Home() {
 
   return (
     <LocationGuard>
+      <OAuthGuard>
       <div className="container">
       <div className="header">
         <h1>Maid Central → GoHighLevel Integration</h1>
@@ -375,6 +377,7 @@ export default function Home() {
         </div>
       </div>
       </div>
+      </OAuthGuard>
     </LocationGuard>
   );
 }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { LocationGuard } from '@/components/LocationGuard';
+import { OAuthGuard } from '@/components/OAuthGuard';
 import { useGHLIframe } from '@/lib/ghl-iframe-context';
 
 interface AppointmentSync {
@@ -267,6 +268,7 @@ export default function AppointmentsPage() {
 
   return (
     <LocationGuard>
+      <OAuthGuard>
       <div className="container">
       <div className="header">
         <h1>Appointment Sync</h1>
@@ -527,6 +529,7 @@ export default function AppointmentsPage() {
         )}
       </div>
       </div>
+      </OAuthGuard>
     </LocationGuard>
   );
 }

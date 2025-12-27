@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useGHLIframe } from '@/lib/ghl-iframe-context';
 import { LocationGuard } from '@/components/LocationGuard';
+import { OAuthGuard } from '@/components/OAuthGuard';
 
 interface Config {
   enabled: boolean;

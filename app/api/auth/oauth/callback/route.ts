@@ -106,26 +106,8 @@ export async function GET(request: NextRequest) {
 
     console.log('[OAuth Callback] Using locationId:', finalLocationId);
 
-    // Parse state to get returnUrl if it was stored
-    let returnUrl: string | null = null;
-    if (state) {
-      try {
-        // Try to decode base64 first (if we encoded it that way)
-        let stateData;
-        try {
-          const decoded = Buffer.from(state, 'base64').toString('utf-8');
-          stateData = JSON.parse(decoded);
-        } catch {
-          // If base64 decode fails, try direct JSON parse
-          stateData = JSON.parse(state);
-        }
-        returnUrl = stateData.returnUrl || null;
-        console.log('[OAuth Callback] Found returnUrl in state:', returnUrl);
-      } catch (e) {
-        // State might not be JSON, that's okay
-        console.log('[OAuth Callback] State is not JSON, ignoring:', state);
-      }
-    }
+    // Note: We don't use returnUrl anymore because OAuth is always installed via marketplace or direct link
+    // The callback will redirect to the setup page to complete configuration
 
     // Store OAuth token
     const oauthToken: GHLOAuthToken = {
@@ -163,24 +145,15 @@ export async function GET(request: NextRequest) {
     }
     await storeIntegrationConfig(config, finalLocationId);
 
-    // Determine redirect URL
-    // Priority: returnUrl from state > construct GHL dashboard URL > fallback to setup page
-    let redirectUrl: string;
+    // Redirect to setup page with success message
+    // OAuth is always installed via marketplace or direct link, so we redirect to setup to complete configuration
+    const setupUrl = new URL('/setup', process.env.APP_BASE_URL || 'http://localhost:3001');
+    setupUrl.searchParams.set('success', 'oauth_installed');
+    setupUrl.searchParams.set('locationId', finalLocationId);
     
-    if (returnUrl) {
-      // Redirect back to the original GHL custom menu link
-      redirectUrl = returnUrl;
-      console.log('[OAuth Callback] Redirecting back to returnUrl:', returnUrl);
-    } else {
-      // Construct a generic GHL dashboard URL with the app
-      // Format: https://app.gohighlevel.com/location/{locationId}/apps
-      // Or try to use the location's custom domain if available
-      redirectUrl = `https://app.gohighlevel.com/location/${finalLocationId}/apps`;
-      console.log('[OAuth Callback] No returnUrl found, redirecting to GHL dashboard:', redirectUrl);
-    }
-
-    // Redirect back to GHL (either custom menu link or dashboard)
-    return NextResponse.redirect(redirectUrl);
+    console.log('[OAuth Callback] OAuth installation successful, redirecting to setup page');
+    
+    return NextResponse.redirect(setupUrl.toString());
   } catch (error) {
     console.error('Error in OAuth callback:', error);
     return NextResponse.redirect(

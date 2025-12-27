@@ -88,30 +88,14 @@ function SetupPageContent() {
   const handleOAuthInstall = () => {
     const locationId = ghlData?.locationId || searchParams.get('locationId');
     
-    // Get the current URL (custom menu link) to return to after OAuth
-    // If we're in an iframe, try to get the parent URL, otherwise use current URL
-    let returnUrl: string | null = null;
-    try {
-      // Try to get parent window URL (if in iframe)
-      if (window.parent && window.parent !== window) {
-        returnUrl = document.referrer || window.location.href;
-      } else {
-        returnUrl = window.location.href;
-      }
-    } catch (e) {
-      // CORS might block parent access, use current URL
-      returnUrl = window.location.href;
-    }
-    
-    // Build OAuth authorize URL with locationId and returnUrl
+    // Build OAuth authorize URL with locationId (optional hint)
+    // OAuth is always installed via marketplace or direct link, not from custom menu links
     const authUrl = new URL('/api/auth/oauth/authorize', window.location.origin);
     if (locationId) {
       authUrl.searchParams.set('locationId', locationId);
     }
-    if (returnUrl) {
-      authUrl.searchParams.set('returnUrl', returnUrl);
-    }
     
+    console.log('[Setup] Initiating OAuth installation for locationId:', locationId);
     window.location.href = authUrl.toString();
   };
 

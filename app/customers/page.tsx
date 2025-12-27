@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { LocationGuard } from '@/components/LocationGuard';
+import { OAuthGuard } from '@/components/OAuthGuard';
 import { useGHLIframe } from '@/lib/ghl-iframe-context';
 
 interface Customer {
@@ -117,6 +118,7 @@ export default function CustomersPage() {
 
   return (
     <LocationGuard>
+      <OAuthGuard>
       <div className="container">
       <div className="header">
         <h1>Customer Lookup</h1>
@@ -224,6 +226,7 @@ export default function CustomersPage() {
         )}
       </div>
       </div>
+      </OAuthGuard>
     </LocationGuard>
   );
 }
