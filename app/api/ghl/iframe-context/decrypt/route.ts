@@ -3,13 +3,24 @@ export const dynamic = 'force-dynamic';
 import { getIntegrationConfig, storeIntegrationConfig } from '@/lib/db';
 import type { GHLIframeData } from '@/lib/ghl-iframe-types';
 
+// Import CryptoJS for decrypting GHL SSO data
+// Based on official GHL marketplace app template
+let CryptoJS: any;
+try {
+  CryptoJS = require('crypto-js');
+} catch (e) {
+  console.warn('[Decrypt] crypto-js not available, decryption will be limited');
+}
+
 /**
  * POST /api/ghl/iframe-context/decrypt
- * Decrypt GHL encrypted user data
+ * Decrypt GHL encrypted user data using SSO key
  * 
- * Note: GHL sends encrypted user data that may need decryption.
- * If the payload is already decrypted or doesn't need decryption,
- * we'll extract the data directly.
+ * Based on official GHL marketplace app template:
+ * https://github.com/GoHighLevel/ghl-marketplace-app-template
+ * 
+ * GHL sends encrypted user data via postMessage that needs to be decrypted
+ * using the GHL_APP_SSO_KEY from your marketplace app settings.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -23,23 +34,71 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // GHL may send the data encrypted or already decrypted
-    // Try to parse it directly first
+    console.log('[Decrypt] Received encrypted data, type:', typeof encryptedData);
+    console.log('[Decrypt] Encrypted data length:', encryptedData?.length || 'N/A');
+
+    const ssoKey = process.env.GHL_APP_SSO_KEY;
+
+    if (!ssoKey) {
+      console.warn('[Decrypt] GHL_APP_SSO_KEY not configured, trying to parse as plain JSON');
+      // Fallback: try to parse as plain JSON if SSO key not configured
+    }
+
     let userData: any;
     
-    if (typeof encryptedData === 'string') {
+    // Try to decrypt if we have SSO key and data is a string
+    if (ssoKey && typeof encryptedData === 'string' && CryptoJS) {
       try {
-        // Try to parse as JSON
+        console.log('[Decrypt] Attempting to decrypt using SSO key...');
+        // GHL uses CryptoJS.AES.decrypt with the SSO key
+        // The encrypted data is typically base64 encoded
+        const decrypted = CryptoJS.AES.decrypt(encryptedData, ssoKey).toString(CryptoJS.enc.Utf8);
+        
+        if (!decrypted || decrypted.trim() === '') {
+          console.warn('[Decrypt] Decryption resulted in empty string, trying to parse as JSON directly');
+          // Fallback: try to parse as JSON (might be plain JSON, not encrypted)
+          try {
+            userData = JSON.parse(encryptedData);
+          } catch {
+            return NextResponse.json(
+              { 
+                error: 'Decryption resulted in empty string. Check that GHL_APP_SSO_KEY matches your marketplace app SSO key.',
+                hint: 'Get your SSO key from: Marketplace App → Settings → SSO Key'
+              },
+              { status: 400 }
+            );
+          }
+        } else {
+          console.log('[Decrypt] Successfully decrypted, parsing JSON...');
+          console.log('[Decrypt] Decrypted data length:', decrypted.length);
+          userData = JSON.parse(decrypted);
+        }
+      } catch (decryptError) {
+        console.warn('[Decrypt] Decryption failed, trying to parse as plain JSON:', decryptError);
+        // Fallback: try to parse as plain JSON (data might not be encrypted)
+        try {
+          userData = JSON.parse(encryptedData);
+          console.log('[Decrypt] Successfully parsed as plain JSON (data was not encrypted)');
+        } catch (parseError) {
+          return NextResponse.json(
+            { 
+              error: 'Failed to decrypt or parse user data.',
+              details: decryptError instanceof Error ? decryptError.message : 'Unknown error',
+              hint: 'Make sure GHL_APP_SSO_KEY is set correctly and matches your marketplace app SSO key'
+            },
+            { status: 400 }
+          );
+        }
+      }
+    } else if (typeof encryptedData === 'string') {
+      // No SSO key, try to parse as JSON
+      try {
         userData = JSON.parse(encryptedData);
       } catch {
-        // If it's not JSON, it might be encrypted
-        // For now, we'll return an error - you may need to implement decryption
-        // based on GHL's encryption method
         return NextResponse.json(
           { 
-            error: 'Data appears to be encrypted. Decryption may be required.',
-            // Return the encrypted data so frontend can try to use it directly
-            encryptedData 
+            error: 'Data appears to be encrypted but GHL_APP_SSO_KEY is not configured. Please set GHL_APP_SSO_KEY in your environment variables.',
+            hint: 'Get your SSO key from your marketplace app settings in GoHighLevel'
           },
           { status: 400 }
         );
@@ -53,6 +112,8 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    
+    console.log('[Decrypt] User data keys:', Object.keys(userData || {}));
 
     // Extract locationId and other user data
     // GHL uses 'activeLocation' for the current location (this is the key!)
