@@ -68,18 +68,25 @@ export async function GET(request: NextRequest) {
     }
 
     // Exchange authorization code for access token
+    // GHL requires application/x-www-form-urlencoded, not JSON
+    const tokenParams = new URLSearchParams({
+      grant_type: 'authorization_code',
+      client_id: clientId,
+      client_secret: clientSecret,
+      code,
+      redirect_uri: redirectUri,
+    });
+    
+    console.log('[OAuth Callback] Exchanging code for token...');
+    console.log('[OAuth Callback] Token endpoint: https://services.leadconnectorhq.com/oauth/token');
+    console.log('[OAuth Callback] Using form-urlencoded content type');
+    
     const tokenResponse = await fetch('https://services.leadconnectorhq.com/oauth/token', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: JSON.stringify({
-        grant_type: 'authorization_code',
-        client_id: clientId,
-        client_secret: clientSecret,
-        code,
-        redirect_uri: redirectUri,
-      }),
+      body: tokenParams.toString(),
     });
 
     if (!tokenResponse.ok) {
