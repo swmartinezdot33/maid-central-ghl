@@ -92,18 +92,76 @@ export function GHLIframeProvider({ children }: { children: React.ReactNode }) {
       }
     }
     
-    // Method 3: Check document.referrer (MOST RELIABLE for custom menu items)
+    // Method 3: Check iframe src if we're in an iframe (check this BEFORE referrer)
+    // The iframe src URL often contains the locationId in the parent's URL structure
+    if (!urlLocationId && window.self !== window.top) {
+      try {
+        // The current window.location.href should be the iframe src
+        const iframeSrc = window.location.href;
+        const iframePathname = window.location.pathname;
+        console.log('[GHL Iframe] Checking iframe src:', iframeSrc);
+        console.log('[GHL Iframe] Iframe pathname:', iframePathname);
+        
+        // Extract from iframe src path - try multiple patterns
+        // Pattern 1: /location/{id}/ or /v2/location/{id}/ or /v1/location/{id}/
+        const iframePathMatch = iframePathname.match(/\/(?:v\d+\/)?location\/([^/]+)/i);
+        if (iframePathMatch && iframePathMatch[1]) {
+          urlLocationId = iframePathMatch[1];
+          console.log('[GHL Iframe] ✅ Found in iframe src path:', urlLocationId);
+        }
+        
+        // Pattern 2: Look for long alphanumeric strings that could be locationId
+        if (!urlLocationId) {
+          const pathParts = iframePathname.split('/');
+          const potentialId = pathParts.find(part => part.length >= 15 && part.length <= 30 && /^[a-zA-Z0-9]+$/.test(part));
+          if (potentialId) {
+            urlLocationId = potentialId;
+            console.log('[GHL Iframe] ✅ Found potential locationId in iframe path parts:', urlLocationId);
+          }
+        }
+        
+        // Check iframe src query params
+        if (!urlLocationId) {
+          const iframeUrl = new URL(iframeSrc);
+          const iframeParams = new URLSearchParams(iframeUrl.search);
+          urlLocationId = iframeParams.get('locationId') || 
+                         iframeParams.get('location_id') || 
+                         iframeParams.get('location');
+          if (urlLocationId) {
+            console.log('[GHL Iframe] ✅ Found in iframe src params:', urlLocationId);
+          }
+        }
+        
+        // Check iframe src hash params
+        if (!urlLocationId && window.location.hash) {
+          const hashParams = new URLSearchParams(window.location.hash.substring(1));
+          urlLocationId = hashParams.get('locationId') || 
+                         hashParams.get('location_id') || 
+                         hashParams.get('location');
+          if (urlLocationId) {
+            console.log('[GHL Iframe] ✅ Found in iframe src hash:', urlLocationId);
+          }
+        }
+      } catch (e) {
+        console.log('[GHL Iframe] Error checking iframe src:', e instanceof Error ? e.message : String(e));
+      }
+    }
+    
+    // Method 4: Check document.referrer (MOST RELIABLE for custom menu items)
     // This is often the best method since GHL loads custom menu items in iframes
     if (!urlLocationId && document.referrer) {
       try {
         const referrerUrl = new URL(document.referrer);
+        console.log('[GHL Iframe] Checking referrer URL:', document.referrer);
+        console.log('[GHL Iframe] Referrer pathname:', referrerUrl.pathname);
         
         // Extract from referrer URL path (e.g., /v2/location/{locationId}/... or /location/{locationId}/...)
-        const referrerPathMatch = referrerUrl.pathname.match(/\/location\/([^/]+)/i);
+        // Try multiple patterns: /location/{id}/, /v2/location/{id}/, /v1/location/{id}/
+        const referrerPathMatch = referrerUrl.pathname.match(/\/(?:v\d+\/)?location\/([^/]+)/i);
         if (referrerPathMatch && referrerPathMatch[1]) {
           urlLocationId = referrerPathMatch[1];
           console.log('[GHL Iframe] ✅ Found in document.referrer path:', urlLocationId);
-          console.log('[GHL Iframe] Referrer URL:', document.referrer);
+          console.log('[GHL Iframe] Full referrer URL:', document.referrer);
         }
         
         // Check referrer query params
@@ -116,8 +174,20 @@ export function GHLIframeProvider({ children }: { children: React.ReactNode }) {
             console.log('[GHL Iframe] ✅ Found in document.referrer params:', urlLocationId);
           }
         }
+        
+        // Also check hash params in referrer
+        if (!urlLocationId && referrerUrl.hash) {
+          const hashParams = new URLSearchParams(referrerUrl.hash.substring(1));
+          urlLocationId = hashParams.get('locationId') || 
+                         hashParams.get('location_id') || 
+                         hashParams.get('location');
+          if (urlLocationId) {
+            console.log('[GHL Iframe] ✅ Found in document.referrer hash:', urlLocationId);
+          }
+        }
       } catch (e) {
         console.log('[GHL Iframe] Error parsing referrer:', e instanceof Error ? e.message : String(e));
+        console.log('[GHL Iframe] Raw referrer:', document.referrer);
       }
     }
     
@@ -465,9 +535,43 @@ export function GHLIframeProvider({ children }: { children: React.ReactNode }) {
         console.warn('[GHL Iframe] Current URL:', window.location.href);
         console.warn('[GHL Iframe] Pathname:', window.location.pathname);
         console.warn('[GHL Iframe] Search:', window.location.search);
+        console.warn('[GHL Iframe] Hash:', window.location.hash);
         console.warn('[GHL Iframe] Referrer:', document.referrer);
-        setError('No GHL context received. Make sure the app is loaded in a GHL iframe.');
-        setLoading(false);
+        console.warn('[GHL Iframe] Window name:', window.name);
+        console.warn('[GHL Iframe] Is in iframe:', window.self !== window.top);
+        
+        // Last resort: Try to extract from any visible locationId in the page
+        // Sometimes GHL might have it in a global variable or data attribute
+        try {
+          // Check if there's a locationId in any script tags or data attributes
+          const scripts = document.querySelectorAll('script');
+          for (const script of scripts) {
+            const content = script.textContent || script.innerHTML;
+            const locationIdMatch = content.match(/locationId["\s:=]+([a-zA-Z0-9]{15,30})/i);
+            if (locationIdMatch && locationIdMatch[1]) {
+              const foundId = locationIdMatch[1];
+              console.log('[GHL Iframe] ⚠️ Found potential locationId in script:', foundId);
+              // Only use it if it looks like a valid GHL locationId
+              if (foundId.length >= 15 && foundId.length <= 30) {
+                urlLocationId = foundId;
+                console.log('[GHL Iframe] ✅ Using locationId from script content');
+                setGHLContext({
+                  locationId: urlLocationId,
+                  userId: urlUserId || undefined,
+                });
+                return; // Exit early if we found it
+              }
+            }
+          }
+        } catch (e) {
+          console.log('[GHL Iframe] Error checking scripts:', e);
+        }
+        
+        // If still no locationId, show error
+        if (!hasLocationIdRef.current) {
+          setError('No GHL context received. Make sure the app is loaded in a GHL iframe. LocationId should be in the URL or provided via postMessage.');
+          setLoading(false);
+        }
       } else if (urlLocationId && !hasLocationIdRef.current) {
         // We have locationId from URL but haven't set it yet - set it now
         console.log('[GHL Iframe] Setting locationId from URL after timeout check');
