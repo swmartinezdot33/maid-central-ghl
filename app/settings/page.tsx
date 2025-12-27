@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useGHLIframe } from '@/lib/ghl-iframe-context';
+import { LocationGuard } from '@/components/LocationGuard';
 
 interface Config {
   enabled: boolean;
@@ -27,7 +29,8 @@ interface Calendar {
   timezone?: string;
 }
 
-export default function SettingsPage() {
+function SettingsPageContent() {
+  const { ghlData } = useGHLIframe();
   const [config, setConfig] = useState<Config | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -36,20 +39,28 @@ export default function SettingsPage() {
   const [loadingCalendars, setLoadingCalendars] = useState(false);
 
   useEffect(() => {
-    loadConfig();
-  }, []);
+    if (ghlData?.locationId) {
+      loadConfig();
+    }
+  }, [ghlData?.locationId]);
 
   useEffect(() => {
-    // Load calendars when config is loaded and has location ID
-    if (config?.ghlLocationId) {
+    // Load calendars when we have locationId from iframe context
+    if (ghlData?.locationId) {
       loadCalendars();
     }
-  }, [config?.ghlLocationId]);
+  }, [ghlData?.locationId]);
 
   const loadConfig = async () => {
+    if (!ghlData?.locationId) {
+      console.warn('[Settings] Cannot load config without locationId');
+      setLoading(false);
+      return;
+    }
+    
     try {
       setLoading(true);
-      const response = await fetch('/api/config');
+      const response = await fetch(`/api/config?locationId=${ghlData.locationId}`);
       const data = await response.json();
       
       if (response.ok) {
@@ -74,11 +85,24 @@ export default function SettingsPage() {
   };
 
   const loadCalendars = async () => {
-    if (!config?.ghlLocationId) return;
+    if (!ghlData?.locationId) {
+      console.warn('[Settings] Cannot load calendars without locationId');
+      console.warn('[Settings] ghlData:', ghlData);
+      return;
+    }
+    
+    const locationId = ghlData.locationId;
+    console.log('[Settings] Loading calendars for locationId:', locationId);
     
     try {
       setLoadingCalendars(true);
-      const response = await fetch('/api/ghl/calendars');
+      const url = `/api/ghl/calendars?locationId=${encodeURIComponent(locationId)}`;
+      console.log('[Settings] Fetching calendars from:', url);
+      const response = await fetch(url, {
+        headers: {
+          'x-ghl-location-id': locationId, // Also send as header as fallback
+        },
+      });
       const data = await response.json();
       
       if (response.ok) {
@@ -111,14 +135,19 @@ export default function SettingsPage() {
   };
 
   const saveConfig = async () => {
+    if (!ghlData?.locationId) {
+      setMessage({ type: 'error', text: 'Location ID is required. Please ensure you are accessing this app through GoHighLevel.' });
+      return;
+    }
+    
     setSaving(true);
     setMessage(null);
 
     try {
-      const response = await fetch('/api/config', {
+      const response = await fetch(`/api/config?locationId=${ghlData.locationId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config),
+        body: JSON.stringify({ ...config, ghlLocationId: ghlData.locationId }),
       });
 
       if (response.ok) {
@@ -387,8 +416,13 @@ export default function SettingsPage() {
             <div style={{ marginBottom: '1.5rem' }}>
               <button
                 onClick={async () => {
+                  if (!ghlData?.locationId) {
+                    setMessage({ type: 'error', text: 'Location ID is required' });
+                    return;
+                  }
+                  
                   try {
-                    const response = await fetch('/api/sync/appointments?action=full', { method: 'POST' });
+                    const response = await fetch(`/api/sync/appointments?action=full&locationId=${ghlData.locationId}`, { method: 'POST' });
                     const data = await response.json();
                     if (response.ok) {
                       setMessage({ 
@@ -467,6 +501,14 @@ export default function SettingsPage() {
         </button>
       </div>
     </div>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <LocationGuard>
+      <SettingsPageContent />
+    </LocationGuard>
   );
 }
 
