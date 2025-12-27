@@ -202,6 +202,7 @@ export async function GET(request: NextRequest) {
     console.log('[OAuth Callback] Token data to store:', {
       locationId: oauthToken.locationId,
       hasAccessToken: !!oauthToken.accessToken,
+      accessTokenLength: oauthToken.accessToken?.length,
       hasRefreshToken: !!oauthToken.refreshToken,
       expiresAt: oauthToken.expiresAt ? new Date(oauthToken.expiresAt).toISOString() : 'never',
       tokenType: oauthToken.tokenType,
@@ -210,18 +211,30 @@ export async function GET(request: NextRequest) {
       companyId: oauthToken.companyId,
     });
     
-    await storeGHLOAuthToken(oauthToken);
-    console.log('[OAuth Callback] ✅ OAuth token stored successfully');
-    
-    // Verify the token was stored correctly
-    const { getGHLOAuthToken } = await import('@/lib/db');
-    const storedToken = await getGHLOAuthToken(finalLocationId);
-    if (storedToken && storedToken.accessToken) {
-      console.log('[OAuth Callback] ✅ Verification: Token retrieved successfully from database');
-      console.log('[OAuth Callback] Stored token locationId:', storedToken.locationId);
-      console.log('[OAuth Callback] Stored token has access token:', !!storedToken.accessToken);
-    } else {
-      console.error('[OAuth Callback] ❌ Verification FAILED: Token not found in database after storage!');
+    try {
+      await storeGHLOAuthToken(oauthToken);
+      console.log('[OAuth Callback] ✅ OAuth token stored successfully');
+      
+      // Verify the token was stored correctly
+      const { getGHLOAuthToken } = await import('@/lib/db');
+      const storedToken = await getGHLOAuthToken(finalLocationId);
+      if (storedToken && storedToken.accessToken) {
+        console.log('[OAuth Callback] ✅ Verification: Token retrieved successfully from database');
+        console.log('[OAuth Callback] Stored token locationId:', storedToken.locationId);
+        console.log('[OAuth Callback] Stored token has access token:', !!storedToken.accessToken);
+        console.log('[OAuth Callback] Stored token access token length:', storedToken.accessToken.length);
+      } else {
+        console.error('[OAuth Callback] ❌ Verification FAILED: Token not found in database after storage!');
+        console.error('[OAuth Callback] Stored token result:', storedToken);
+        throw new Error('Token storage verification failed - token not found after storage');
+      }
+    } catch (storageError) {
+      console.error('[OAuth Callback] ❌ Error storing OAuth token:', storageError);
+      console.error('[OAuth Callback] Storage error details:', {
+        error: storageError instanceof Error ? storageError.message : String(storageError),
+        stack: storageError instanceof Error ? storageError.stack : undefined,
+      });
+      throw storageError; // Re-throw to be caught by outer try-catch
     }
 
     // Create or update integration config for this location

@@ -349,40 +349,75 @@ export async function getMaidCentralCredentials(locationId?: string): Promise<Ma
 
 // GHL OAuth Tokens (for marketplace app) - OAuth only, no private tokens
 export async function storeGHLOAuthToken(token: GHLOAuthToken): Promise<void> {
-  await initDatabase();
-  const sql = getSql();
-  
-  // Use ON CONFLICT to handle upsert atomically and prevent race conditions
-  // This will INSERT if location_id doesn't exist, or UPDATE if it does
-  await sql`
-    INSERT INTO ghl_oauth_tokens (
-      location_id, access_token, refresh_token, expires_at, 
-      token_type, scope, user_id, company_id, installed_at
-    )
-    VALUES (
-      ${token.locationId},
-      ${token.accessToken},
-      ${token.refreshToken || null},
-      ${token.expiresAt || null},
-      ${token.tokenType || 'Bearer'},
-      ${token.scope || null},
-      ${token.userId || null},
-      ${token.companyId || null},
-      ${token.installedAt}
-    )
-    ON CONFLICT (location_id) 
-    DO UPDATE SET
-      access_token = EXCLUDED.access_token,
-      refresh_token = EXCLUDED.refresh_token,
-      expires_at = EXCLUDED.expires_at,
-      token_type = EXCLUDED.token_type,
-      scope = EXCLUDED.scope,
-      user_id = EXCLUDED.user_id,
-      company_id = EXCLUDED.company_id,
-      updated_at = NOW()
-  `;
-  
-  console.log('[DB] OAuth token stored/updated for locationId:', token.locationId);
+  try {
+    await initDatabase();
+    const sql = getSql();
+    
+    console.log('[DB] Storing OAuth token for locationId:', token.locationId);
+    console.log('[DB] Token details:', {
+      hasAccessToken: !!token.accessToken,
+      accessTokenLength: token.accessToken?.length,
+      hasRefreshToken: !!token.refreshToken,
+      expiresAt: token.expiresAt,
+      tokenType: token.tokenType,
+    });
+    
+    // Use ON CONFLICT to handle upsert atomically and prevent race conditions
+    // This will INSERT if location_id doesn't exist, or UPDATE if it does
+    const result = await sql`
+      INSERT INTO ghl_oauth_tokens (
+        location_id, access_token, refresh_token, expires_at, 
+        token_type, scope, user_id, company_id, installed_at
+      )
+      VALUES (
+        ${token.locationId},
+        ${token.accessToken},
+        ${token.refreshToken || null},
+        ${token.expiresAt || null},
+        ${token.tokenType || 'Bearer'},
+        ${token.scope || null},
+        ${token.userId || null},
+        ${token.companyId || null},
+        ${token.installedAt}
+      )
+      ON CONFLICT (location_id) 
+      DO UPDATE SET
+        access_token = EXCLUDED.access_token,
+        refresh_token = EXCLUDED.refresh_token,
+        expires_at = EXCLUDED.expires_at,
+        token_type = EXCLUDED.token_type,
+        scope = EXCLUDED.scope,
+        user_id = EXCLUDED.user_id,
+        company_id = EXCLUDED.company_id,
+        updated_at = NOW()
+      RETURNING id, location_id
+    `;
+    
+    console.log('[DB] ✅ OAuth token stored/updated successfully for locationId:', token.locationId);
+    console.log('[DB] Storage result:', result);
+    
+    // Verify immediately after storage
+    const verifyResult = await sql`
+      SELECT location_id, access_token FROM ghl_oauth_tokens 
+      WHERE location_id = ${token.locationId} 
+      LIMIT 1
+    `;
+    
+    if (verifyResult.length > 0 && verifyResult[0].access_token) {
+      console.log('[DB] ✅ Verification: Token confirmed in database');
+    } else {
+      console.error('[DB] ❌ Verification FAILED: Token not found after storage!');
+      throw new Error('Token storage verification failed - token not found in database after insert');
+    }
+  } catch (error) {
+    console.error('[DB] ❌ Error storing OAuth token:', error);
+    console.error('[DB] Error details:', {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      locationId: token.locationId,
+    });
+    throw error;
+  }
 }
 
 export async function getGHLOAuthToken(locationId: string): Promise<GHLOAuthToken | null> {
