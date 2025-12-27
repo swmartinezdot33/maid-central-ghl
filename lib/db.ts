@@ -472,19 +472,53 @@ export async function getGHLOAuthToken(locationId: string): Promise<GHLOAuthToke
 
     const row = result[0];
     console.log('[DB] ✅ Token found for locationId:', row.location_id);
+    console.log('[DB] Token data:', {
+      hasAccessToken: !!row.access_token,
+      accessTokenLength: row.access_token?.length,
+      expiresAt: row.expires_at,
+      expiresAtType: typeof row.expires_at,
+    });
+    
+    // Handle expires_at - it might be stored as string or number
+    let expiresAt: number | undefined;
+    if (row.expires_at) {
+      if (typeof row.expires_at === 'string') {
+        expiresAt = parseInt(row.expires_at, 10);
+      } else if (typeof row.expires_at === 'number') {
+        expiresAt = row.expires_at;
+      } else if (row.expires_at instanceof Date) {
+        expiresAt = row.expires_at.getTime();
+      }
+    }
+    
+    // Handle installed_at - it might be stored as string, Date, or timestamp
+    let installedAt: Date;
+    if (row.installed_at instanceof Date) {
+      installedAt = row.installed_at;
+    } else if (typeof row.installed_at === 'string') {
+      installedAt = new Date(row.installed_at);
+    } else {
+      // Fallback to current date if somehow invalid
+      installedAt = new Date();
+    }
+    
     return {
       locationId: row.location_id as string,
       accessToken: row.access_token as string,
       refreshToken: row.refresh_token as string | undefined,
-      expiresAt: row.expires_at as number | undefined,
+      expiresAt,
       tokenType: row.token_type as string | undefined,
       scope: row.scope as string | undefined,
       userId: row.user_id as string | undefined,
       companyId: row.company_id as string | undefined,
-      installedAt: new Date(row.installed_at as string),
+      installedAt,
     };
   } catch (error) {
     console.error('[DB] Error getting OAuth token:', error);
+    console.error('[DB] Error details:', {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     throw error;
   }
 }
