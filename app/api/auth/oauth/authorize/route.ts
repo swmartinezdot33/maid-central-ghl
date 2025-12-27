@@ -39,13 +39,30 @@ export async function GET(request: NextRequest) {
     authUrl.searchParams.set('response_type', 'code');
     authUrl.searchParams.set('client_id', clientId);
     authUrl.searchParams.set('redirect_uri', redirectUri);
-    authUrl.searchParams.set('scope', 'locations.read contacts.write contacts.read calendars.read calendars.write');
+    // Scopes must match exactly what's configured in GHL Marketplace app settings
+    // Based on GHL Marketplace settings, using readonly variants and full scope list
+    const scopes = [
+      'locations.readonly',
+      'contacts.readonly',
+      'contacts.write',
+      'calendars.readonly',
+      'calendars.write',
+      'calendars/events.readonly',
+      'calendars/events.write',
+      'calendars/groups.readonly',
+      'calendars/resources.write',
+      'calendars/groups.write',
+      'calendars/resources.readonly',
+      'opportunities.readonly',
+      'opportunities.write'
+    ].join(' ');
+    authUrl.searchParams.set('scope', scopes);
     
     console.log('[OAuth Authorize] OAuth URL Parameters:');
     console.log('[OAuth Authorize]   - response_type: code');
     console.log('[OAuth Authorize]   - client_id:', clientId ? `${clientId.substring(0, 10)}...` : 'MISSING');
     console.log('[OAuth Authorize]   - redirect_uri:', redirectUri);
-    console.log('[OAuth Authorize]   - scope: locations.read contacts.write contacts.read calendars.read calendars.write');
+    console.log('[OAuth Authorize]   - scope:', scopes);
     
     // Store locationId in state (if provided) so we can use it as a hint
     // Note: We don't store returnUrl because OAuth is always installed via marketplace or direct link

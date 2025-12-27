@@ -21,7 +21,23 @@ export async function GET(request: NextRequest) {
   authUrl.searchParams.set('response_type', 'code');
   authUrl.searchParams.set('client_id', clientId);
   authUrl.searchParams.set('redirect_uri', redirectUri);
-  authUrl.searchParams.set('scope', 'locations.read contacts.write contacts.read calendars.read calendars.write');
+  // Scopes must match exactly what's configured in GHL Marketplace app settings
+  const scopes = [
+    'locations.readonly',
+    'contacts.readonly',
+    'contacts.write',
+    'calendars.readonly',
+    'calendars.write',
+    'calendars/events.readonly',
+    'calendars/events.write',
+    'calendars/groups.readonly',
+    'calendars/resources.write',
+    'calendars/groups.write',
+    'calendars/resources.readonly',
+    'opportunities.readonly',
+    'opportunities.write'
+  ].join(' ');
+  authUrl.searchParams.set('scope', scopes);
 
   return NextResponse.json({
     oauthUrl: authUrl.toString(),
@@ -29,7 +45,7 @@ export async function GET(request: NextRequest) {
       response_type: 'code',
       client_id: `${clientId.substring(0, 10)}...${clientId.substring(clientId.length - 4)}`,
       redirect_uri: redirectUri,
-      scope: 'locations.read contacts.write contacts.read calendars.read calendars.write',
+      scope: scopes,
     },
     instructions: {
       step1: 'Copy the redirect_uri value above',
