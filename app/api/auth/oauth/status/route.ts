@@ -19,7 +19,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    console.log('[OAuth Status] Checking OAuth for locationId:', locationId);
     const oauthToken = await getGHLOAuthToken(locationId);
+    console.log('[OAuth Status] OAuth token found:', !!oauthToken, 'hasAccessToken:', !!oauthToken?.accessToken);
+    
     const config = await getIntegrationConfig(locationId);
 
     // Check if token is expired
@@ -27,10 +30,24 @@ export async function GET(request: NextRequest) {
       ? Date.now() >= oauthToken.expiresAt 
       : false;
 
-    return NextResponse.json({
-      installed: !!oauthToken,
+    // OAuth is installed if we have a token with an access token
+    // Expiration is checked separately - expired tokens are still "installed" but need refresh
+    const hasAccessToken = !!(oauthToken && oauthToken.accessToken);
+    const installed = hasAccessToken; // Don't check expiration here - that's handled separately
+    
+    console.log('[OAuth Status] Final status:', { 
+      installed, 
+      isExpired, 
+      hasToken: hasAccessToken,
+      hasRefreshToken: !!oauthToken?.refreshToken,
       locationId,
-      hasToken: !!oauthToken?.accessToken,
+      tokenExists: !!oauthToken
+    });
+
+    return NextResponse.json({
+      installed,
+      locationId,
+      hasToken: hasAccessToken,
       isExpired,
       canRefresh: !!oauthToken?.refreshToken,
       config: config ? {

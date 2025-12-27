@@ -33,11 +33,29 @@ export function OAuthGuard({ children, fallback }: OAuthGuardProps) {
     }
 
     try {
+      console.log('[OAuthGuard] Checking OAuth status for locationId:', ghlData.locationId);
       const response = await fetch(`/api/auth/oauth/status?locationId=${ghlData.locationId}`);
       const data = await response.json();
+      console.log('[OAuthGuard] OAuth status response:', data);
+      
+      // Check if OAuth is installed - use installed field from API (which checks for accessToken)
+      // The API returns installed: true if there's a valid accessToken
+      const isInstalled = data.installed === true;
+      const isExpired = data.isExpired === true;
+      
+      console.log('[OAuthGuard] OAuth status check:', { 
+        isInstalled, 
+        isExpired,
+        apiInstalled: data.installed,
+        apiHasToken: data.hasToken,
+        apiIsExpired: data.isExpired,
+        locationId: data.locationId,
+        fullResponse: data
+      });
+      
       setOauthStatus({
-        installed: data.installed || false,
-        isExpired: data.isExpired || false,
+        installed: isInstalled,
+        isExpired: isExpired,
       });
     } catch (error) {
       console.error('[OAuthGuard] Error checking OAuth status:', error);
