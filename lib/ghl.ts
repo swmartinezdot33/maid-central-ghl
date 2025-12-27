@@ -8,10 +8,44 @@ const GHL_API_BASE_URL = 'https://services.leadconnectorhq.com';
 
 // Create axios instance with timeout for serverless optimization
 const createAxiosInstance = (): AxiosInstance => {
-  return axios.create({
+  const instance = axios.create({
     baseURL: GHL_API_BASE_URL,
     timeout: 30000, // 30 second timeout for serverless functions
   });
+  
+  // Add response interceptor to handle authorization errors
+  instance.interceptors.response.use(
+    (response) => response,
+    (error) => {
+      if (axios.isAxiosError(error)) {
+        const status = error.response?.status;
+        const errorData = error.response?.data;
+        
+        // Handle 401/403 authorization errors
+        if (status === 401 || status === 403) {
+          const errorMessage = errorData?.message || errorData?.error || 'Invalid Authorization!';
+          console.error('[GHL API] Authorization error:', {
+            status,
+            message: errorMessage,
+            url: error.config?.url,
+            locationId: error.config?.headers?.['x-ghl-location-id'],
+          });
+          
+          // Create a more descriptive error
+          const enhancedError = new Error(
+            `Invalid Authorization! GHL API returned ${status}. ` +
+            `The OAuth token may be expired, invalid, or not have the required permissions. ` +
+            `Please reinstall the app via OAuth. Error: ${errorMessage}`
+          );
+          enhancedError.name = 'GHLAuthorizationError';
+          return Promise.reject(enhancedError);
+        }
+      }
+      return Promise.reject(error);
+    }
+  );
+  
+  return instance;
 };
 
 interface GHLContact {
@@ -74,8 +108,22 @@ export class GHLAPI {
     
     const oauthToken = await this.getOAuthToken(locationId);
     if (!oauthToken) {
+      // Check if token exists but is expired
+      const storedToken = await getGHLOAuthToken(locationId);
+      if (storedToken) {
+        const isExpired = storedToken.expiresAt ? Date.now() >= storedToken.expiresAt : false;
+        if (isExpired) {
+          throw new Error(`GHL OAuth token for location ${locationId} has expired. Please reinstall the app via OAuth.`);
+        }
+        if (!storedToken.accessToken) {
+          throw new Error(`GHL OAuth token for location ${locationId} is missing access token. Please reinstall the app via OAuth.`);
+        }
+      }
       throw new Error(`GHL OAuth not configured for location ${locationId}. Please install the app via OAuth in the setup page.`);
     }
+    
+    // Log token details for debugging (without exposing the full token)
+    console.log('[GHL API] Using OAuth token for locationId:', locationId, 'Token length:', oauthToken.length);
     
     return oauthToken;
   }
