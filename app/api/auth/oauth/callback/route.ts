@@ -76,10 +76,19 @@ export async function GET(request: NextRequest) {
                         tokenData.location?.id ||
                         (state ? (() => {
                           try {
-                            const parsed = JSON.parse(state);
+                            // Try to decode base64 first (if we encoded it that way)
+                            let parsed;
+                            try {
+                              const decoded = Buffer.from(state, 'base64').toString('utf-8');
+                              parsed = JSON.parse(decoded);
+                            } catch {
+                              // If base64 decode fails, try direct JSON parse
+                              parsed = JSON.parse(state);
+                            }
                             return parsed.locationId || parsed.location_id;
                           } catch {
-                            return state; // Sometimes state is just the locationId
+                            // If state is not JSON, it might just be the locationId
+                            return state.length > 20 ? null : state; // Only use if it looks like an ID
                           }
                         })() : null);
 
@@ -101,7 +110,15 @@ export async function GET(request: NextRequest) {
     let returnUrl: string | null = null;
     if (state) {
       try {
-        const stateData = JSON.parse(state);
+        // Try to decode base64 first (if we encoded it that way)
+        let stateData;
+        try {
+          const decoded = Buffer.from(state, 'base64').toString('utf-8');
+          stateData = JSON.parse(decoded);
+        } catch {
+          // If base64 decode fails, try direct JSON parse
+          stateData = JSON.parse(state);
+        }
         returnUrl = stateData.returnUrl || null;
         console.log('[OAuth Callback] Found returnUrl in state:', returnUrl);
       } catch (e) {

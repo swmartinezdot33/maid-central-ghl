@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
     });
     
     // GHL OAuth authorization URL
+    // Use chooselocation endpoint to force location selection
     const authUrl = new URL('https://marketplace.gohighlevel.com/oauth/chooselocation');
     authUrl.searchParams.set('response_type', 'code');
     authUrl.searchParams.set('client_id', clientId);
@@ -41,6 +42,7 @@ export async function GET(request: NextRequest) {
     authUrl.searchParams.set('scope', 'locations.read contacts.write contacts.read calendars.read calendars.write');
     
     // Store locationId and returnUrl in state so we can retrieve them after OAuth
+    // Use a simple format that GHL can handle
     const stateData: { locationId?: string; returnUrl?: string } = {};
     if (locationId) {
       stateData.locationId = locationId;
@@ -49,14 +51,39 @@ export async function GET(request: NextRequest) {
       stateData.returnUrl = returnUrl;
     }
     
+    // Encode state as base64 to avoid URL encoding issues
     if (Object.keys(stateData).length > 0) {
-      authUrl.searchParams.set('state', JSON.stringify(stateData));
+      try {
+        const stateString = JSON.stringify(stateData);
+        const stateBase64 = Buffer.from(stateString).toString('base64');
+        authUrl.searchParams.set('state', stateBase64);
+      } catch (e) {
+        // Fallback to JSON string if base64 encoding fails
+        console.warn('[OAuth Authorize] Failed to encode state as base64, using JSON string:', e);
+        authUrl.searchParams.set('state', JSON.stringify(stateData));
+      }
     }
+    
+    // Note: GHL's chooselocation endpoint should automatically show location selection
+    // If it's not showing, it might be because:
+    // 1. User only has one location (auto-selected)
+    // 2. Redirect URI mismatch
+    // 3. App distribution settings in GHL marketplace
 
-    console.log('[OAuth Authorize] Redirecting to:', authUrl.toString().replace(clientId, 'CLIENT_ID_HIDDEN'));
+    const finalAuthUrl = authUrl.toString();
+    console.log('[OAuth Authorize] Redirecting to:', finalAuthUrl.replace(clientId, 'CLIENT_ID_HIDDEN'));
+    console.log('[OAuth Authorize] Full redirect URI:', redirectUri);
+    console.log('[OAuth Authorize] State data:', stateData);
+    
+    // Verify redirect URI matches what's configured in GHL marketplace
+    // This is critical - any mismatch will cause OAuth to fail silently
+    if (!redirectUri.includes('/api/auth/oauth/callback')) {
+      console.error('[OAuth Authorize] WARNING: Redirect URI does not contain /api/auth/oauth/callback');
+      console.error('[OAuth Authorize] Make sure GHL_REDIRECT_URI matches your GHL marketplace app settings');
+    }
     
     // Redirect to GHL OAuth
-    return NextResponse.redirect(authUrl.toString());
+    return NextResponse.redirect(finalAuthUrl);
   } catch (error) {
     console.error('Error initiating GHL OAuth:', error);
     return NextResponse.json(
