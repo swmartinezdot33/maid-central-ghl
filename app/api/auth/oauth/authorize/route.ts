@@ -18,8 +18,20 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get locationId from query params if provided (for specific location installation)
+    // Get locationId and returnUrl from query params
     const locationId = request.nextUrl.searchParams.get('locationId');
+    const returnUrl = request.nextUrl.searchParams.get('returnUrl') || 
+                     request.headers.get('referer') || // Try to get from referer
+                     null;
+    
+    // Log OAuth initiation for debugging
+    console.log('[OAuth Authorize] Initiating OAuth flow:', {
+      clientId: clientId ? `${clientId.substring(0, 10)}...` : 'missing',
+      redirectUri,
+      locationId,
+      returnUrl,
+      baseUrl,
+    });
     
     // GHL OAuth authorization URL
     const authUrl = new URL('https://marketplace.gohighlevel.com/oauth/chooselocation');
@@ -28,11 +40,21 @@ export async function GET(request: NextRequest) {
     authUrl.searchParams.set('redirect_uri', redirectUri);
     authUrl.searchParams.set('scope', 'locations.read contacts.write contacts.read calendars.read calendars.write');
     
-    // If locationId is provided, add it to state so we can track it
+    // Store locationId and returnUrl in state so we can retrieve them after OAuth
+    const stateData: { locationId?: string; returnUrl?: string } = {};
     if (locationId) {
-      authUrl.searchParams.set('state', JSON.stringify({ locationId }));
+      stateData.locationId = locationId;
+    }
+    if (returnUrl) {
+      stateData.returnUrl = returnUrl;
+    }
+    
+    if (Object.keys(stateData).length > 0) {
+      authUrl.searchParams.set('state', JSON.stringify(stateData));
     }
 
+    console.log('[OAuth Authorize] Redirecting to:', authUrl.toString().replace(clientId, 'CLIENT_ID_HIDDEN'));
+    
     // Redirect to GHL OAuth
     return NextResponse.redirect(authUrl.toString());
   } catch (error) {

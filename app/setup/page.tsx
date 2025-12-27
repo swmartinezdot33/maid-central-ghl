@@ -80,10 +80,32 @@ function SetupPageContent() {
 
   const handleOAuthInstall = () => {
     const locationId = ghlData?.locationId || searchParams.get('locationId');
-    const authUrl = locationId 
-      ? `/api/auth/oauth/authorize?locationId=${locationId}`
-      : '/api/auth/oauth/authorize';
-    window.location.href = authUrl;
+    
+    // Get the current URL (custom menu link) to return to after OAuth
+    // If we're in an iframe, try to get the parent URL, otherwise use current URL
+    let returnUrl: string | null = null;
+    try {
+      // Try to get parent window URL (if in iframe)
+      if (window.parent && window.parent !== window) {
+        returnUrl = document.referrer || window.location.href;
+      } else {
+        returnUrl = window.location.href;
+      }
+    } catch (e) {
+      // CORS might block parent access, use current URL
+      returnUrl = window.location.href;
+    }
+    
+    // Build OAuth authorize URL with locationId and returnUrl
+    const authUrl = new URL('/api/auth/oauth/authorize', window.location.origin);
+    if (locationId) {
+      authUrl.searchParams.set('locationId', locationId);
+    }
+    if (returnUrl) {
+      authUrl.searchParams.set('returnUrl', returnUrl);
+    }
+    
+    window.location.href = authUrl.toString();
   };
 
   const handleSaveCredentials = async (e: React.FormEvent) => {
