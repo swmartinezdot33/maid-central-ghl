@@ -20,16 +20,16 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error('[OAuth Callback] OAuth error from GHL:', error);
-      return NextResponse.redirect(
-        `${process.env.APP_BASE_URL || 'http://localhost:3001'}/setup?error=${encodeURIComponent(error)}`
-      );
+      const errorUrl = new URL('/oauth-success', process.env.APP_BASE_URL || 'http://localhost:3001');
+      errorUrl.searchParams.set('error', error);
+      return NextResponse.redirect(errorUrl.toString());
     }
 
     if (!code) {
       console.error('[OAuth Callback] No authorization code received. All params:', allParams);
-      return NextResponse.redirect(
-        `${process.env.APP_BASE_URL || 'http://localhost:3001'}/setup?error=no_code&debug=${encodeURIComponent(JSON.stringify(allParams))}`
-      );
+      const errorUrl = new URL('/oauth-success', process.env.APP_BASE_URL || 'http://localhost:3001');
+      errorUrl.searchParams.set('error', `no_code: ${JSON.stringify(allParams)}`);
+      return NextResponse.redirect(errorUrl.toString());
     }
 
     const clientId = process.env.GHL_CLIENT_ID;
@@ -37,9 +37,9 @@ export async function GET(request: NextRequest) {
     const redirectUri = process.env.GHL_REDIRECT_URI || `${process.env.APP_BASE_URL || 'http://localhost:3001'}/api/auth/oauth/callback`;
 
     if (!clientId || !clientSecret) {
-      return NextResponse.redirect(
-        `${process.env.APP_BASE_URL || 'http://localhost:3001'}/setup?error=oauth_not_configured`
-      );
+      const errorUrl = new URL('/oauth-success', process.env.APP_BASE_URL || 'http://localhost:3001');
+      errorUrl.searchParams.set('error', 'oauth_not_configured');
+      return NextResponse.redirect(errorUrl.toString());
     }
 
     // Exchange authorization code for access token
@@ -59,10 +59,10 @@ export async function GET(request: NextRequest) {
 
     if (!tokenResponse.ok) {
       const errorData = await tokenResponse.json().catch(() => ({ error: 'Unknown error' }));
-      console.error('Token exchange error:', errorData);
-      return NextResponse.redirect(
-        `${process.env.APP_BASE_URL || 'http://localhost:3001'}/setup?error=${encodeURIComponent(errorData.error || 'token_exchange_failed')}`
-      );
+      console.error('[OAuth Callback] Token exchange error:', errorData);
+      const errorUrl = new URL('/oauth-success', process.env.APP_BASE_URL || 'http://localhost:3001');
+      errorUrl.searchParams.set('error', errorData.error || 'token_exchange_failed');
+      return NextResponse.redirect(errorUrl.toString());
     }
 
     const tokenData = await tokenResponse.json();
@@ -99,9 +99,9 @@ export async function GET(request: NextRequest) {
 
     if (!finalLocationId) {
       console.error('[OAuth Callback] No locationId found. Code:', code, 'State:', state, 'Token data:', tokenData);
-      return NextResponse.redirect(
-        `${process.env.APP_BASE_URL || 'http://localhost:3001'}/setup?error=no_location_id&debug=${encodeURIComponent(JSON.stringify({ code: !!code, state, tokenKeys: Object.keys(tokenData || {}) }))}`
-      );
+      const errorUrl = new URL('/oauth-success', process.env.APP_BASE_URL || 'http://localhost:3001');
+      errorUrl.searchParams.set('error', `no_location_id: ${JSON.stringify({ code: !!code, state, tokenKeys: Object.keys(tokenData || {}) })}`);
+      return NextResponse.redirect(errorUrl.toString());
     }
 
     console.log('[OAuth Callback] Using locationId:', finalLocationId);
@@ -122,11 +122,14 @@ export async function GET(request: NextRequest) {
       installedAt: new Date(),
     };
 
+    console.log('[OAuth Callback] Storing OAuth token for locationId:', finalLocationId);
     await storeGHLOAuthToken(oauthToken);
+    console.log('[OAuth Callback] ✅ OAuth token stored successfully');
 
     // Create or update integration config for this location
     let config = await getIntegrationConfig(finalLocationId);
     if (!config) {
+      console.log('[OAuth Callback] Creating new integration config for locationId:', finalLocationId);
       config = {
         ghlLocationId: finalLocationId,
         fieldMappings: [],
@@ -141,24 +144,40 @@ export async function GET(request: NextRequest) {
         appointmentConflictResolution: 'timestamp',
       };
     } else {
+      console.log('[OAuth Callback] Updating existing integration config');
       config.ghlLocationId = finalLocationId;
     }
     await storeIntegrationConfig(config, finalLocationId);
+    console.log('[OAuth Callback] ✅ Integration config stored successfully');
 
-    // Redirect to setup page with success message
-    // OAuth is always installed via marketplace or direct link, so we redirect to setup to complete configuration
-    const setupUrl = new URL('/setup', process.env.APP_BASE_URL || 'http://localhost:3001');
-    setupUrl.searchParams.set('success', 'oauth_installed');
-    setupUrl.searchParams.set('locationId', finalLocationId);
+    console.log('[OAuth Callback] ============================================');
+    console.log('[OAuth Callback] ✅ OAuth INSTALLATION SUCCESSFUL!');
+    console.log('[OAuth Callback] Location ID:', finalLocationId);
+    console.log('[OAuth Callback] Token Information:');
+    console.log('[OAuth Callback]   - Has Access Token:', !!oauthToken.accessToken);
+    console.log('[OAuth Callback]   - Has Refresh Token:', !!oauthToken.refreshToken);
+    console.log('[OAuth Callback]   - Token Type:', oauthToken.tokenType);
+    console.log('[OAuth Callback]   - Expires At:', oauthToken.expiresAt ? new Date(oauthToken.expiresAt).toISOString() : 'Never');
+    console.log('[OAuth Callback]   - Scope:', oauthToken.scope);
+    console.log('[OAuth Callback]   - User ID:', oauthToken.userId);
+    console.log('[OAuth Callback]   - Company ID:', oauthToken.companyId);
+    console.log('[OAuth Callback]   - Installed At:', oauthToken.installedAt.toISOString());
+    console.log('[OAuth Callback] ============================================');
+
+    // Redirect to success page (not setup page, since setup requires iframe context)
+    // The success page is a simple standalone page that doesn't need iframe context
+    const successUrl = new URL('/oauth-success', process.env.APP_BASE_URL || 'http://localhost:3001');
+    successUrl.searchParams.set('success', 'oauth_installed');
+    successUrl.searchParams.set('locationId', finalLocationId);
     
-    console.log('[OAuth Callback] OAuth installation successful, redirecting to setup page');
+    console.log('[OAuth Callback] Redirecting to success page:', successUrl.toString());
     
-    return NextResponse.redirect(setupUrl.toString());
+    return NextResponse.redirect(successUrl.toString());
   } catch (error) {
-    console.error('Error in OAuth callback:', error);
-    return NextResponse.redirect(
-      `${process.env.APP_BASE_URL || 'http://localhost:3001'}/setup?error=${encodeURIComponent(error instanceof Error ? error.message : 'oauth_callback_failed')}`
-    );
+    console.error('[OAuth Callback] Error in OAuth callback:', error);
+    const errorUrl = new URL('/oauth-success', process.env.APP_BASE_URL || 'http://localhost:3001');
+    errorUrl.searchParams.set('error', error instanceof Error ? error.message : 'oauth_callback_failed');
+    return NextResponse.redirect(errorUrl.toString());
   }
 }
 
