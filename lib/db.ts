@@ -429,34 +429,64 @@ export async function storeGHLOAuthToken(token: GHLOAuthToken): Promise<void> {
 }
 
 export async function getGHLOAuthToken(locationId: string): Promise<GHLOAuthToken | null> {
-  await initDatabase();
-  const sql = getSql();
-  
-  const result = await sql`
-    SELECT 
-      location_id, access_token, refresh_token, expires_at,
-      token_type, scope, user_id, company_id, installed_at
-    FROM ghl_oauth_tokens
-    WHERE location_id = ${locationId}
-    LIMIT 1
-  `;
+  try {
+    await initDatabase();
+    const sql = getSql();
+    
+    console.log('[DB] Getting OAuth token for locationId:', locationId, 'Length:', locationId.length);
+    
+    // Try exact match first
+    let result = await sql`
+      SELECT 
+        location_id, access_token, refresh_token, expires_at,
+        token_type, scope, user_id, company_id, installed_at
+      FROM ghl_oauth_tokens
+      WHERE location_id = ${locationId}
+      LIMIT 1
+    `;
 
-  if (result.length === 0) {
-    return null;
+    // If no exact match, try trimmed comparison (in case of whitespace issues)
+    if (result.length === 0) {
+      console.log('[DB] No exact match found, trying trimmed comparison...');
+      result = await sql`
+        SELECT 
+          location_id, access_token, refresh_token, expires_at,
+          token_type, scope, user_id, company_id, installed_at
+        FROM ghl_oauth_tokens
+        WHERE TRIM(location_id) = TRIM(${locationId})
+        LIMIT 1
+      `;
+    }
+
+    if (result.length === 0) {
+      console.log('[DB] No token found for locationId:', locationId);
+      // Debug: check what tokens exist
+      const allTokens = await sql`
+        SELECT location_id, LENGTH(access_token) as token_length
+        FROM ghl_oauth_tokens
+        LIMIT 5
+      `;
+      console.log('[DB] Available tokens in database:', allTokens.map(t => ({ location_id: t.location_id, length: t.location_id?.length })));
+      return null;
+    }
+
+    const row = result[0];
+    console.log('[DB] ✅ Token found for locationId:', row.location_id);
+    return {
+      locationId: row.location_id as string,
+      accessToken: row.access_token as string,
+      refreshToken: row.refresh_token as string | undefined,
+      expiresAt: row.expires_at as number | undefined,
+      tokenType: row.token_type as string | undefined,
+      scope: row.scope as string | undefined,
+      userId: row.user_id as string | undefined,
+      companyId: row.company_id as string | undefined,
+      installedAt: new Date(row.installed_at as string),
+    };
+  } catch (error) {
+    console.error('[DB] Error getting OAuth token:', error);
+    throw error;
   }
-
-  const row = result[0];
-  return {
-    locationId: row.location_id as string,
-    accessToken: row.access_token as string,
-    refreshToken: row.refresh_token as string | undefined,
-    expiresAt: row.expires_at as number | undefined,
-    tokenType: row.token_type as string | undefined,
-    scope: row.scope as string | undefined,
-    userId: row.user_id as string | undefined,
-    companyId: row.company_id as string | undefined,
-    installedAt: new Date(row.installed_at as string),
-  };
 }
 
 export async function deleteGHLOAuthToken(locationId: string): Promise<void> {
