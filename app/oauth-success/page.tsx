@@ -15,6 +15,7 @@ function OAuthSuccessContent() {
   useEffect(() => {
     const success = searchParams.get('success');
     const error = searchParams.get('error');
+    const errorDescription = searchParams.get('error_description');
     const locId = searchParams.get('locationId');
 
     if (locId) {
@@ -23,7 +24,11 @@ function OAuthSuccessContent() {
 
     if (error) {
       setStatus('error');
-      setMessage(decodeURIComponent(error));
+      // Include error_description if available for more details
+      const fullError = errorDescription 
+        ? `${error}: ${decodeURIComponent(errorDescription)}`
+        : decodeURIComponent(error);
+      setMessage(fullError);
     } else if (success === 'oauth_installed') {
       setStatus('success');
       setMessage('OAuth installation successful! The app is now connected to your GoHighLevel location.');

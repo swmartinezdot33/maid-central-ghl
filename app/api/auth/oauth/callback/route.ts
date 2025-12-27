@@ -21,21 +21,31 @@ export async function GET(request: NextRequest) {
     if (error) {
       const errorDescription = request.nextUrl.searchParams.get('error_description') || 'No description provided';
       const errorUri = request.nextUrl.searchParams.get('error_uri');
+      const state = request.nextUrl.searchParams.get('state');
+      
       console.error('[OAuth Callback] ============================================');
       console.error('[OAuth Callback] ❌ OAUTH ERROR FROM GHL');
       console.error('[OAuth Callback] Error Code:', error);
       console.error('[OAuth Callback] Error Description:', errorDescription);
       console.error('[OAuth Callback] Error URI:', errorUri);
-      console.error('[OAuth Callback] All Query Params:', allParams);
+      console.error('[OAuth Callback] State:', state);
+      console.error('[OAuth Callback] All Query Params:', JSON.stringify(allParams, null, 2));
       console.error('[OAuth Callback] Client ID configured:', !!process.env.GHL_CLIENT_ID);
+      console.error('[OAuth Callback] Client ID value:', process.env.GHL_CLIENT_ID ? `${process.env.GHL_CLIENT_ID.substring(0, 10)}...${process.env.GHL_CLIENT_ID.substring(process.env.GHL_CLIENT_ID.length - 4)}` : 'NOT SET');
       console.error('[OAuth Callback] Client Secret configured:', !!process.env.GHL_CLIENT_SECRET);
       console.error('[OAuth Callback] Redirect URI:', process.env.GHL_REDIRECT_URI || `${process.env.APP_BASE_URL || 'http://localhost:3001'}/api/auth/oauth/callback`);
+      console.error('[OAuth Callback] APP_BASE_URL:', process.env.APP_BASE_URL || 'NOT SET');
       console.error('[OAuth Callback] ============================================');
       
+      // Include full error details in the redirect
       const errorUrl = new URL('/oauth-success', process.env.APP_BASE_URL || 'http://localhost:3001');
-      errorUrl.searchParams.set('error', `${error}: ${errorDescription}`);
+      errorUrl.searchParams.set('error', error);
+      errorUrl.searchParams.set('error_description', errorDescription);
       if (errorUri) {
         errorUrl.searchParams.set('error_uri', errorUri);
+      }
+      if (state) {
+        errorUrl.searchParams.set('state', state);
       }
       return NextResponse.redirect(errorUrl.toString());
     }

@@ -43,14 +43,27 @@ export async function GET(request: NextRequest) {
   ].join('+'); // Use + instead of space to match GHL format
   authUrl.searchParams.set('scope', scopes);
 
+  const generatedUrl = authUrl.toString();
+  
+  // Expected URL from GHL Marketplace (for comparison)
+  const expectedUrl = `https://marketplace.gohighlevel.com/oauth/chooselocation?response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&client_id=${clientId}&scope=${encodeURIComponent(scopes)}&version_id=${versionId}`;
+  
   return NextResponse.json({
-    oauthUrl: authUrl.toString(),
+    generatedUrl,
+    expectedUrl,
+    urlsMatch: generatedUrl === expectedUrl,
     parameters: {
       response_type: 'code',
-      client_id: `${clientId.substring(0, 10)}...${clientId.substring(clientId.length - 4)}`,
+      client_id: clientId,
       version_id: versionId,
       redirect_uri: redirectUri,
       scope: scopes,
+      scopeEncoded: encodeURIComponent(scopes),
+    },
+    comparison: {
+      generatedUrlLength: generatedUrl.length,
+      expectedUrlLength: expectedUrl.length,
+      differences: generatedUrl !== expectedUrl ? 'URLs do not match exactly' : 'URLs match',
     },
     instructions: {
       step1: 'Copy the redirect_uri value above',
