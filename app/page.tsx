@@ -32,7 +32,7 @@ interface ConfigStatus {
 }
 
 export default function Home() {
-  const { ghlData, loading: iframeLoading } = useGHLIframe();
+  const { ghlData, loading: iframeLoading, error: iframeError } = useGHLIframe();
   const [status, setStatus] = useState<ConfigStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -139,7 +139,7 @@ export default function Home() {
     }
   };
 
-  if (loading) {
+  if (loading || iframeLoading) {
     return (
       <div className="container">
         <div className="header">
@@ -149,8 +149,6 @@ export default function Home() {
       </div>
     );
   }
-
-  const { ghlData, loading: iframeLoading, error: iframeError } = useGHLIframe();
 
   return (
     <div className="container">

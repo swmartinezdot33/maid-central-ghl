@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 import { getIntegrationConfig, storeIntegrationConfig } from '@/lib/db';
-import type { GHLIframeData } from '@/lib/ghl-iframe-context';
+import type { GHLIframeData } from '@/lib/ghl-iframe-types';
 
 /**
  * POST /api/ghl/iframe-context

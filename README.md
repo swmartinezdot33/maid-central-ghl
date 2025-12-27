@@ -4,11 +4,13 @@ This Next.js application integrates Maid Central with GoHighLevel, automatically
 
 ## Features
 
-- **Private Token Authentication with GoHighLevel**: Simple private token authentication for GoHighLevel subaccounts
+- **OAuth Marketplace App**: Secure OAuth authentication per GHL location (marketplace app)
+- **User Context Support**: Automatic user and location context when embedded in GHL iframe
 - **Maid Central API Authentication**: Token-based authentication with automatic token refresh
 - **Field Mapping Interface**: Visual interface to map Maid Central quote fields to GoHighLevel contact fields
 - **Webhook Support**: Receives webhooks from Maid Central when new quotes are created
-- **Vercel KV Storage**: Secure storage for private tokens and API credentials
+- **Bidirectional Appointment Sync**: Syncs appointments between MaidCentral and GHL calendars
+- **Multi-tenant Support**: Each GHL location has isolated configuration and credentials
 - **Real-time Sync**: Automatically syncs new quotes to GoHighLevel based on configured mappings
 
 ## Prerequisites
@@ -42,7 +44,7 @@ MAID_CENTRAL_API_BASE_URL=https://api.maidcentral.com
 # GoHighLevel Private Token (no longer needed - configured via UI)
 # GHL_CLIENT_ID=your_ghl_client_id
 # GHL_CLIENT_SECRET=your_ghl_client_secret
-# GHL_REDIRECT_URI=http://localhost:3000/api/auth/ghl/callback
+# GHL_REDIRECT_URI=http://localhost:3001/api/auth/oauth/callback
 
 # App Base URL (for webhooks and OAuth redirects)
 APP_BASE_URL=http://localhost:3000
@@ -54,12 +56,23 @@ APP_BASE_URL=http://localhost:3000
 2. Navigate to your project → Storage → Create Database → KV
 3. Copy the `KV_REST_API_URL` and `KV_REST_API_TOKEN`
 
-### 4. Get GoHighLevel Private Token
+### 4. Set Up GHL Marketplace App (OAuth)
 
-1. Log into your GoHighLevel account
-2. Navigate to: **Settings → Integrations → API → Private API Token**
-3. Generate or copy your Private API Token
-4. Note your Location/Subaccount ID (found in your GHL URL or API settings)
+1. **Register Your App in GHL Marketplace**
+   - Go to: https://marketplace.gohighlevel.com/developer
+   - Create a new app
+   - Set Redirect URI: `https://maidcentral.vercel.app/api/auth/oauth/callback`
+   - Select required scopes: `locations.read`, `contacts.read`, `contacts.write`, `calendars.read`, `calendars.write`
+   - Save your **Client ID** and **Client Secret**
+
+2. **Configure Environment Variables**
+   - Add `GHL_CLIENT_ID` and `GHL_CLIENT_SECRET` to your `.env.local`
+   - See `MARKETPLACE_SETUP.md` for detailed instructions
+
+3. **Install the App**
+   - Visit `/setup` page in your app
+   - Click "Install via OAuth"
+   - Complete the OAuth flow to install for your location
 
 ### 5. Get Maid Central API Credentials
 
@@ -85,11 +98,12 @@ The application will be available at `http://localhost:3000`
    - Enter your Maid Central API username and password
    - Click "Save Credentials"
 
-2. **Configure GoHighLevel Private Token**
-   - On the same `/setup` page
-   - Enter your GoHighLevel Private API Token
-   - Enter your Location/Subaccount ID
-   - Click "Save Token"
+2. **Install GoHighLevel App (OAuth)**
+   - On the `/setup` page
+   - Click "Install via OAuth" button
+   - Select your GHL location
+   - Authorize the app
+   - Installation completes automatically
 
 3. **Configure Field Mappings**
    - Go to `/mapping` page
@@ -138,8 +152,9 @@ curl "http://localhost:3000/api/webhook/quote?quoteId=12345"
 
 ## API Routes
 
-- `POST /api/ghl/token` - Save GoHighLevel private token and location ID
-- `GET /api/ghl/token` - Get GoHighLevel token status
+- `GET /api/auth/oauth/authorize` - Initiate OAuth installation flow
+- `GET /api/auth/oauth/callback` - OAuth callback handler
+- `GET /api/auth/oauth/status` - Check OAuth installation status
 - `POST /api/maid-central/credentials` - Save Maid Central API credentials
 - `GET /api/maid-central/credentials` - Get Maid Central credentials status
 - `GET /api/maid-central/fields` - Get available Maid Central quote fields
@@ -205,8 +220,11 @@ vercel --prod
 
 ## Troubleshooting
 
-### Private Token Not Working
-- Verify your private token is correct and hasn't expired
+### OAuth Installation Issues
+- Verify `GHL_CLIENT_ID` and `GHL_CLIENT_SECRET` are set correctly
+- Check that redirect URI matches exactly in GHL Marketplace settings
+- Ensure app is accessible via HTTPS (required for OAuth)
+- See `MARKETPLACE_SETUP.md` for detailed troubleshooting
 - Ensure the Location ID matches your GoHighLevel subaccount
 - Check that the token has the necessary permissions for creating contacts
 

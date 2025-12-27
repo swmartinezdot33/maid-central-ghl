@@ -1,22 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
-import { getIntegrationConfig, storeIntegrationConfig, getGHLPrivateToken, type IntegrationConfig } from '@/lib/kv';
-import { getLocationId } from '@/lib/request-utils';
+import { getIntegrationConfig, storeIntegrationConfig, type IntegrationConfig } from '@/lib/kv';
+import { getLocationIdFromRequest } from '@/lib/request-utils';
+import { getGHLOAuthToken } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   try {
-    const locationId = await getLocationId(request);
+    const locationId = getLocationIdFromRequest(request);
     const config = await getIntegrationConfig(locationId);
     
-    // Check GHL connection status - token must exist AND have a valid token value
+    // Check GHL OAuth connection status
     let ghlConnected = false;
     try {
-      const ghlToken = await getGHLPrivateToken();
-      // Token is connected if it exists AND has a valid token string AND has a location ID
-      ghlConnected = !!(ghlToken && ghlToken.privateToken && ghlToken.privateToken.trim() !== '' && (ghlToken.locationId || config?.ghlLocationId));
+      if (locationId || config?.ghlLocationId) {
+        const oauthToken = await getGHLOAuthToken(locationId || config?.ghlLocationId || '');
+        // OAuth is connected if token exists, has access token, and is not expired
+        const isExpired = oauthToken?.expiresAt ? Date.now() >= oauthToken.expiresAt : false;
+        ghlConnected = !!(oauthToken && oauthToken.accessToken && !isExpired);
+      }
     } catch (tokenError) {
       // If token fetch fails, assume not connected
-      console.warn('[Config] Failed to fetch GHL token:', tokenError);
+      console.warn('[Config] Failed to fetch GHL OAuth token:', tokenError);
       ghlConnected = false;
     }
     
@@ -58,7 +62,7 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const locationId = await getLocationId(request);
+    const locationId = getLocationIdFromRequest(request);
     
     const body = await request.json();
     const finalLocationId = locationId || body.locationId || body.ghlLocationId;
@@ -90,8 +94,6 @@ export async function PATCH(request: NextRequest) {
     };
 
     await storeIntegrationConfig(updatedConfig, finalLocationId);
-
-    await storeIntegrationConfig(updatedConfig, locationId);
     return NextResponse.json({ success: true, config: updatedConfig });
   } catch (error) {
     console.error('Error updating config:', error);

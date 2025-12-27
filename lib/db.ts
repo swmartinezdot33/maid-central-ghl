@@ -16,9 +16,16 @@ export interface MaidCentralCredentials {
   tokenExpiresAt?: number;
 }
 
-export interface GHLPrivateToken {
-  privateToken: string;
+export interface GHLOAuthToken {
   locationId: string;
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt?: number;
+  tokenType?: string;
+  scope?: string;
+  userId?: string;
+  companyId?: string;
+  installedAt: Date;
 }
 
 export interface FieldMapping {
@@ -58,16 +65,6 @@ export async function initDatabase(): Promise<void> {
         access_token TEXT,
         refresh_token TEXT,
         token_expires_at BIGINT,
-        created_at TIMESTAMP DEFAULT NOW(),
-        updated_at TIMESTAMP DEFAULT NOW()
-      )
-    `;
-
-    await sql`
-      CREATE TABLE IF NOT EXISTS ghl_private_token (
-        id SERIAL PRIMARY KEY,
-        private_token TEXT NOT NULL,
-        location_id TEXT NOT NULL,
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
       )
@@ -220,6 +217,24 @@ export async function initDatabase(): Promise<void> {
       console.log('Appointment sync columns already exist or error adding them:', error);
     }
 
+    // OAuth tokens table for marketplace app installations
+    await sql`
+      CREATE TABLE IF NOT EXISTS ghl_oauth_tokens (
+        id SERIAL PRIMARY KEY,
+        location_id TEXT NOT NULL UNIQUE,
+        access_token TEXT NOT NULL,
+        refresh_token TEXT,
+        expires_at BIGINT,
+        token_type TEXT DEFAULT 'Bearer',
+        scope TEXT,
+        user_id TEXT,
+        company_id TEXT,
+        installed_at TIMESTAMP DEFAULT NOW(),
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `;
+
     // Note: We no longer create a default config row since location_id is now required
   } catch (error) {
     console.error('Database initialization error:', error);
@@ -280,93 +295,88 @@ export async function getMaidCentralCredentials(): Promise<MaidCentralCredential
   };
 }
 
-// GHL Private Token
-export async function storeGHLPrivateToken(tokenData: GHLPrivateToken): Promise<void> {
+// GHL OAuth Tokens (for marketplace app) - OAuth only, no private tokens
+export async function storeGHLOAuthToken(token: GHLOAuthToken): Promise<void> {
   await initDatabase();
   const sql = getSql();
   
-  console.log('[DB] storeGHLPrivateToken called:', { 
-    hasToken: !!tokenData.privateToken,
-    tokenLength: tokenData.privateToken?.length || 0,
-    locationId: tokenData.locationId 
-  });
-  
   const existing = await sql`
-    SELECT id FROM ghl_private_token LIMIT 1
+    SELECT id FROM ghl_oauth_tokens WHERE location_id = ${token.locationId} LIMIT 1
   `;
 
   if (existing.length > 0) {
     await sql`
-      UPDATE ghl_private_token
+      UPDATE ghl_oauth_tokens
       SET 
-        private_token = ${tokenData.privateToken},
-        location_id = ${tokenData.locationId},
+        access_token = ${token.accessToken},
+        refresh_token = ${token.refreshToken || null},
+        expires_at = ${token.expiresAt || null},
+        token_type = ${token.tokenType || 'Bearer'},
+        scope = ${token.scope || null},
+        user_id = ${token.userId || null},
+        company_id = ${token.companyId || null},
         updated_at = NOW()
-      WHERE id = ${existing[0].id}
+      WHERE location_id = ${token.locationId}
     `;
-    console.log('[DB] Updated existing GHL token record');
   } else {
     await sql`
-      INSERT INTO ghl_private_token (private_token, location_id)
-      VALUES (${tokenData.privateToken}, ${tokenData.locationId})
+      INSERT INTO ghl_oauth_tokens (
+        location_id, access_token, refresh_token, expires_at, 
+        token_type, scope, user_id, company_id, installed_at
+      )
+      VALUES (
+        ${token.locationId},
+        ${token.accessToken},
+        ${token.refreshToken || null},
+        ${token.expiresAt || null},
+        ${token.tokenType || 'Bearer'},
+        ${token.scope || null},
+        ${token.userId || null},
+        ${token.companyId || null},
+        ${token.installedAt}
+      )
     `;
-    console.log('[DB] Inserted new GHL token record');
   }
-  
-  // Verify it was saved
-  const verify = await sql`
-    SELECT private_token, location_id FROM ghl_private_token LIMIT 1
-  `;
-  console.log('[DB] Verification after save:', {
-    rowCount: verify.length,
-    hasToken: verify.length > 0 ? !!verify[0].private_token : false,
-    tokenLength: verify.length > 0 && verify[0].private_token ? String(verify[0].private_token).length : 0
-  });
 }
 
-export async function getGHLPrivateToken(): Promise<GHLPrivateToken | null> {
+export async function getGHLOAuthToken(locationId: string): Promise<GHLOAuthToken | null> {
   await initDatabase();
   const sql = getSql();
   
-  try {
-    const result = await sql`
-      SELECT private_token, location_id
-      FROM ghl_private_token
-      LIMIT 1
-    `;
+  const result = await sql`
+    SELECT 
+      location_id, access_token, refresh_token, expires_at,
+      token_type, scope, user_id, company_id, installed_at
+    FROM ghl_oauth_tokens
+    WHERE location_id = ${locationId}
+    LIMIT 1
+  `;
 
-    console.log('[DB] getGHLPrivateToken result:', { 
-      rowCount: result.length,
-      hasData: result.length > 0,
-      firstRow: result.length > 0 ? {
-        hasToken: !!result[0].private_token,
-        tokenLength: result[0].private_token ? String(result[0].private_token).length : 0,
-        locationId: result[0].location_id
-      } : null
-    });
-
-    if (result.length === 0) {
-      return null;
-    }
-
-    const row = result[0];
-    const privateToken = row.private_token as string | null;
-    const locationId = row.location_id as string | null;
-    
-    // Check if token is actually present
-    if (!privateToken || privateToken.trim() === '') {
-      console.warn('[DB] GHL private token exists in database but is empty or null');
-      return null;
-    }
-    
-    return {
-      privateToken,
-      locationId: locationId || '',
-    };
-  } catch (error) {
-    console.error('[DB] Error fetching GHL private token:', error);
-    throw error;
+  if (result.length === 0) {
+    return null;
   }
+
+  const row = result[0];
+  return {
+    locationId: row.location_id as string,
+    accessToken: row.access_token as string,
+    refreshToken: row.refresh_token as string | undefined,
+    expiresAt: row.expires_at as number | undefined,
+    tokenType: row.token_type as string | undefined,
+    scope: row.scope as string | undefined,
+    userId: row.user_id as string | undefined,
+    companyId: row.company_id as string | undefined,
+    installedAt: new Date(row.installed_at as string),
+  };
+}
+
+export async function deleteGHLOAuthToken(locationId: string): Promise<void> {
+  await initDatabase();
+  const sql = getSql();
+  
+  await sql`
+    DELETE FROM ghl_oauth_tokens WHERE location_id = ${locationId}
+  `;
 }
 
 // Integration Config

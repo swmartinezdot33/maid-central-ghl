@@ -2,6 +2,7 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { useGHLIframe } from '@/lib/ghl-iframe-context';
 
 interface CredentialsStatus {
   credentials: {
@@ -21,14 +22,23 @@ function SetupPageContent() {
   
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [ghlToken, setGhlToken] = useState<{ hasToken: boolean; locationId?: string } | null>(null);
-  const [ghlPrivateToken, setGhlPrivateToken] = useState('');
-  const [ghlLocationId, setGhlLocationId] = useState('');
-  const [savingGHL, setSavingGHL] = useState(false);
+  const [oauthStatus, setOauthStatus] = useState<{ installed: boolean; locationId?: string; isExpired?: boolean } | null>(null);
+  const [loadingOAuth, setLoadingOAuth] = useState(true);
+  const { ghlData } = useGHLIframe();
 
   useEffect(() => {
     fetchCredentials();
-    fetchGHLToken();
+    fetchOAuthStatus();
+    
+    // Check for OAuth success/error messages
+    const success = searchParams.get('success');
+    const error = searchParams.get('error');
+    if (success === 'oauth_installed') {
+      setMessage({ type: 'success', text: 'OAuth installation successful! The app is now connected to your GoHighLevel location.' });
+      fetchOAuthStatus();
+    } else if (error) {
+      setMessage({ type: 'error', text: `OAuth error: ${decodeURIComponent(error)}` });
+    }
   }, [searchParams]);
 
   const fetchCredentials = async () => {
@@ -46,17 +56,34 @@ function SetupPageContent() {
     }
   };
 
-  const fetchGHLToken = async () => {
+  const fetchOAuthStatus = async () => {
     try {
-      const response = await fetch('/api/ghl/token');
-      const data = await response.json();
-      setGhlToken(data.token);
-      if (data.token?.locationId) {
-        setGhlLocationId(data.token.locationId);
+      setLoadingOAuth(true);
+      // Use locationId from iframe context if available
+      const locationId = ghlData?.locationId || searchParams.get('locationId');
+      if (!locationId) {
+        setOauthStatus({ installed: false });
+        setLoadingOAuth(false);
+        return;
       }
+      
+      const response = await fetch(`/api/auth/oauth/status?locationId=${locationId}`);
+      const data = await response.json();
+      setOauthStatus(data);
     } catch (error) {
-      console.error('Error fetching GHL token:', error);
+      console.error('Error fetching OAuth status:', error);
+      setOauthStatus({ installed: false });
+    } finally {
+      setLoadingOAuth(false);
     }
+  };
+
+  const handleOAuthInstall = () => {
+    const locationId = ghlData?.locationId || searchParams.get('locationId');
+    const authUrl = locationId 
+      ? `/api/auth/oauth/authorize?locationId=${locationId}`
+      : '/api/auth/oauth/authorize';
+    window.location.href = authUrl;
   };
 
   const handleSaveCredentials = async (e: React.FormEvent) => {
@@ -89,39 +116,6 @@ function SetupPageContent() {
     }
   };
 
-  const handleSaveGHLToken = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSavingGHL(true);
-    setMessage(null);
-
-    try {
-      const response = await fetch('/api/ghl/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          privateToken: ghlPrivateToken, 
-          locationId: ghlLocationId 
-        }),
-      });
-
-      const data = await response.json();
-      
-      if (response.ok) {
-        setMessage({ 
-          type: data.warning ? 'info' : 'success', 
-          text: data.message || 'GoHighLevel token saved successfully!' 
-        });
-        setGhlPrivateToken(''); // Clear the input for security
-        await fetchGHLToken();
-      } else {
-        setMessage({ type: 'error', text: data.error || 'Failed to save token' });
-      }
-    } catch (error) {
-      setMessage({ type: 'error', text: 'Failed to save token' });
-    } finally {
-      setSavingGHL(false);
-    }
-  };
 
   if (loading) {
     return (
@@ -194,76 +188,60 @@ function SetupPageContent() {
         </form>
       </div>
 
-      {/* GoHighLevel Private Token */}
+      {/* GoHighLevel OAuth Installation (Marketplace App) */}
       <div className="section">
-        <h2 className="section-title">GoHighLevel Private Token</h2>
+        <h2 className="section-title">GoHighLevel Marketplace App (OAuth)</h2>
         <p style={{ marginBottom: '1rem', color: '#666', fontSize: '0.9rem' }}>
-          Get your private token from GoHighLevel: <strong>Settings → Integrations → API → Private API Token</strong>
-          <br />
-          Also provide your Location/Subaccount ID where contacts should be created.
+          Install the app via OAuth for secure, per-location authentication. This is the recommended method for marketplace apps and enables user context features.
         </p>
         
-        {ghlToken?.hasToken && (
+        {loadingOAuth ? (
+          <p>Checking installation status...</p>
+        ) : oauthStatus?.installed ? (
           <div className="mb-2">
-            <span className="status-badge success">Currently configured</span>
-            {ghlToken.locationId && (
+            <span className="status-badge success">✓ App Installed</span>
+            {oauthStatus.locationId && (
               <p style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#666' }}>
-                Location ID: {ghlToken.locationId}
+                Location ID: {oauthStatus.locationId}
+              </p>
+            )}
+            {oauthStatus.isExpired && (
+              <p style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#856404' }}>
+                ⚠ Token expired. Please reinstall the app.
               </p>
             )}
           </div>
-        )}
-
-        <form onSubmit={handleSaveGHLToken}>
-          <div className="form-group">
-            <label htmlFor="ghlPrivateToken">Private API Token</label>
-            <input
-              type="password"
-              id="ghlPrivateToken"
-              value={ghlPrivateToken}
-              onChange={(e) => setGhlPrivateToken(e.target.value)}
-              required={!ghlToken?.hasToken}
-              placeholder="Enter your GoHighLevel private API token"
-            />
-            <div style={{ marginTop: '0.75rem', padding: '1rem', backgroundColor: '#f5f5f5', borderRadius: '4px', fontSize: '0.85rem' }}>
-              <p style={{ marginBottom: '0.5rem', fontWeight: 600, color: '#333' }}>Required Scopes/Permissions:</p>
-              <p style={{ marginBottom: '0.5rem', color: '#666' }}>When creating your Private API Token in GoHighLevel, ensure it has the following scopes with <strong style={{ color: '#d32f2f' }}>READ and WRITE</strong> access:</p>
-              <ul style={{ marginLeft: '1.5rem', marginBottom: '0.5rem', color: '#666', lineHeight: '1.6' }}>
-                <li><strong>Locations:</strong> Read access to fetch location information</li>
-                <li><strong>Contacts:</strong> <span style={{ color: '#d32f2f', fontWeight: 600 }}>Read and Write</span> - Required to create contacts and update contact custom fields from Maid Central quotes</li>
-                <li><strong>Custom Fields:</strong> Read access to fetch contact, opportunity, and object custom fields for mapping</li>
-                <li><strong>Opportunities:</strong> <span style={{ color: '#d32f2f', fontWeight: 600 }}>Read and Write</span> - Required to create/update opportunities and opportunity custom fields</li>
-                <li><strong>Objects:</strong> <span style={{ color: '#d32f2f', fontWeight: 600 }}>Read and Write</span> - Required to create/update objects and object custom fields</li>
-              </ul>
-              <p style={{ marginTop: '0.75rem', padding: '0.5rem', backgroundColor: '#fff3cd', borderRadius: '3px', fontSize: '0.85rem', color: '#856404' }}>
-                <strong>Important:</strong> Write permissions are required so that quote data from Maid Central can be synced to your GoHighLevel account.
-              </p>
-              <p style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#888', fontStyle: 'italic' }}>
-                You can find these settings in: <strong>Settings → Integrations → Private Integrations</strong>
-              </p>
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="ghlLocationId">Location/Subaccount ID</label>
-            <input
-              type="text"
-              id="ghlLocationId"
-              value={ghlLocationId}
-              onChange={(e) => setGhlLocationId(e.target.value)}
-              required
-              placeholder="Enter your GoHighLevel location/subaccount ID"
-            />
-            <p style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: '#666' }}>
-              You can find this in your GoHighLevel URL or API settings. It's typically in the format: <code style={{ backgroundColor: '#f0f0f0', padding: '2px 4px', borderRadius: '2px' }}>TEKiMreVHPe3olIARlmx</code>
+        ) : (
+          <div className="mb-2">
+            <span className="status-badge" style={{ backgroundColor: '#ffc107', color: '#856404' }}>
+              App Not Installed
+            </span>
+            <p style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#666' }}>
+              Click below to install the app via OAuth for your location.
             </p>
           </div>
-
-          <button type="submit" className="btn btn-secondary" disabled={savingGHL}>
-            {savingGHL ? 'Saving...' : 'Save Token'}
-          </button>
-        </form>
+        )}
+        
+        <button 
+          type="button" 
+          onClick={handleOAuthInstall}
+          className="btn"
+          style={{ 
+            backgroundColor: oauthStatus?.installed ? '#6c757d' : '#007bff',
+            color: 'white',
+            marginBottom: '1rem'
+          }}
+        >
+          {oauthStatus?.installed ? 'Reinstall App' : 'Install via OAuth'}
+        </button>
+        
+        {ghlData?.locationId && (
+          <p style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: '#666' }}>
+            Current Location from iframe: <code style={{ backgroundColor: '#f0f0f0', padding: '2px 4px', borderRadius: '2px' }}>{ghlData.locationId}</code>
+          </p>
+        )}
       </div>
+
 
       <div className="section">
         <button onClick={() => router.push('/')} className="btn" style={{ backgroundColor: '#e0e0e0' }}>

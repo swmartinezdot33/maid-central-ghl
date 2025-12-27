@@ -445,8 +445,8 @@ export default function AppointmentsPage() {
 
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <button
-                onClick={handleSyncAppointment}
-                disabled={syncing}
+                onClick={() => foundAppointment.Id && handleSyncAppointment(foundAppointment.Id)}
+                disabled={syncing || !foundAppointment.Id}
                 className="btn"
                 style={{ 
                   backgroundColor: syncing ? '#9ca3af' : '#16a34a', 

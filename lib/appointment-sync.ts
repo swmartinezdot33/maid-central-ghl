@@ -390,7 +390,7 @@ export async function resolveConflict(
   try {
     const config = await getIntegrationConfig(locationId);
     
-    if (!config.ghlCalendarId || !config.ghlLocationId) {
+    if (!config || !config.ghlCalendarId || !config.ghlLocationId) {
       return { success: false, error: 'GHL Calendar or Location ID not configured' };
     }
 

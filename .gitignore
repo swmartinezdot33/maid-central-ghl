@@ -26,6 +26,9 @@ yarn-error.log*
 .env*.local
 .env
 
+# credentials setup files (may contain sensitive data)
+SETUP_CREDENTIALS.md
+
 # vercel
 .vercel
 

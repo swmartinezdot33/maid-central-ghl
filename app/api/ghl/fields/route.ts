@@ -17,14 +17,21 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Debug: Check if token exists before calling API
-    const { getGHLPrivateToken } = await import('@/lib/kv');
-    const tokenCheck = await getGHLPrivateToken();
-    console.log('[GHL Fields API] Token check:', { 
-      exists: !!tokenCheck, 
-      hasToken: !!tokenCheck?.privateToken,
-      locationId: tokenCheck?.locationId 
+    // Check OAuth installation status
+    const { getGHLOAuthToken } = await import('@/lib/db');
+    const oauthToken = await getGHLOAuthToken(locationId);
+    console.log('[GHL Fields API] OAuth check:', { 
+      installed: !!oauthToken, 
+      hasToken: !!oauthToken?.accessToken,
+      locationId 
     });
+    
+    if (!oauthToken?.accessToken) {
+      return NextResponse.json(
+        { error: 'OAuth not installed for this location. Please install the app via OAuth first.' },
+        { status: 401 }
+      );
+    }
 
     console.log(`[GHL Fields API] Fetching all fields for location: ${locationId}`);
     const fields = await ghlAPI.getAllFields(locationId);

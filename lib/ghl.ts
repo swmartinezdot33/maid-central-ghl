@@ -1,11 +1,10 @@
 import axios, { AxiosInstance } from 'axios';
-import { getGHLPrivateToken, type GHLPrivateToken } from './kv';
+import { getGHLOAuthToken, type GHLOAuthToken } from './db';
 
 // GHL API v2 base URL
 const GHL_API_BASE_URL = 'https://services.leadconnectorhq.com';
 
-// GHL API v2 endpoints - check if we need /v2/ prefix
-// Private tokens work with v2 API, but endpoints may need adjustment
+// GHL API v2 endpoints - OAuth only (marketplace app)
 
 // Create axios instance with timeout for serverless optimization
 const createAxiosInstance = (): AxiosInstance => {
@@ -36,101 +35,95 @@ export class GHLAPI {
     this.client = createAxiosInstance();
   }
 
-  async getPrivateToken(): Promise<string> {
+  /**
+   * Get OAuth access token for a location (preferred for marketplace apps)
+   */
+  async getOAuthToken(locationId?: string): Promise<string | null> {
     try {
-      const tokenData = await getGHLPrivateToken();
-      if (!tokenData) {
-        throw new Error('GHL private token not configured. Please add your private token in settings.');
+      if (!locationId) {
+        return null;
       }
-      if (!tokenData.privateToken || tokenData.privateToken.trim() === '') {
-        throw new Error('GHL private token is empty. Please reconfigure your private token in settings.');
+      const oauthToken = await getGHLOAuthToken(locationId);
+      if (!oauthToken?.accessToken) {
+        return null;
       }
-      return tokenData.privateToken;
+      
+      // Check if token is expired and needs refresh
+      if (oauthToken.expiresAt && Date.now() >= oauthToken.expiresAt) {
+        if (oauthToken.refreshToken) {
+          // TODO: Implement token refresh
+          console.warn('[GHL API] OAuth token expired, refresh not yet implemented');
+        }
+        return null;
+      }
+      
+      return oauthToken.accessToken;
     } catch (error) {
-      console.error('[GHL API] Error getting private token:', error);
+      console.error('[GHL API] Error getting OAuth token:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get authentication token (OAuth only - marketplace app required)
+   */
+  async getAuthToken(locationId: string): Promise<string> {
+    if (!locationId) {
+      throw new Error('Location ID is required. Please install the app via OAuth for your location.');
+    }
+    
+    const oauthToken = await this.getOAuthToken(locationId);
+    if (!oauthToken) {
+      throw new Error(`GHL OAuth not configured for location ${locationId}. Please install the app via OAuth in the setup page.`);
+    }
+    
+    return oauthToken;
+  }
+
+  /**
+   * @deprecated Use getAuthToken(locationId) instead
+   */
+  async getPrivateToken(): Promise<string> {
+    throw new Error('Private tokens are no longer supported. Please use OAuth installation. Use getAuthToken(locationId) instead.');
+  }
+
+  async getLocations(locationId: string): Promise<any[]> {
+    if (!locationId) {
+      throw new Error('Location ID is required. OAuth installation required.');
+    }
+    
+    const token = await this.getAuthToken(locationId);
+    
+    // Try to get the specific location
+    try {
+      const response = await this.client.get(`/locations/${locationId}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Version: '2021-07-28',
+        },
+      });
+      
+      // Handle single location response
+      if (response.data?.location) {
+        return [response.data.location];
+      }
+      
+      // Handle direct location data
+      if (response.data?.id) {
+        return [response.data];
+      }
+      
+      return [];
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(`Failed to fetch location: ${error.response?.data?.message || error.response?.statusText || error.message}`);
+      }
       throw error;
     }
   }
 
-  async getLocations(): Promise<any[]> {
-    // Get both token and location ID from storage
-    const tokenData = await getGHLPrivateToken();
-    if (!tokenData?.privateToken) {
-      throw new Error('GHL private token not configured');
-    }
-    const token = tokenData.privateToken;
-    const storedLocationId = tokenData.locationId;
-    
-    // Try multiple endpoint patterns
-    const endpoints = [
-      { url: '/locations', params: {}, description: '/locations' },
-      { url: '/locations/', params: {}, description: '/locations/' },
-      { url: '/accounts', params: {}, description: '/accounts' },
-    ];
-
-    // If we have a stored location ID, prioritize checking that specific location
-    // This is crucial for Private Tokens which often can't "list" locations but can access their own
-    if (storedLocationId) {
-      endpoints.unshift({ 
-        url: `/locations/${storedLocationId}`, 
-        params: {}, 
-        description: `/locations/${storedLocationId} (Stored ID)` 
-      });
-    }
-    
-    for (const endpoint of endpoints) {
-      try {
-        console.log(`[GHL API] Trying locations endpoint: ${endpoint.description}`);
-        const response = await this.client.get(endpoint.url, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Version: '2021-07-28',
-          },
-          params: endpoint.params,
-        });
-        
-        // Handle single location response (from /locations/{id})
-        if (response.data?.location) {
-          console.log(`[GHL API] Success! Found specific location: ${response.data.location.id}`);
-          return [response.data.location];
-        }
-
-        // Handle list response
-        if (Array.isArray(response.data)) {
-          return response.data;
-        }
-        const locations = response.data?.locations || response.data?.data || [];
-        if (locations.length > 0) {
-          console.log(`[GHL API] Success! Found ${locations.length} locations using: ${endpoint.description}`);
-          return locations;
-        }
-      } catch (error) {
-        if (axios.isAxiosError(error)) {
-          // If it's the specific location check and it failed, log it but continue
-          console.log(`[GHL API] Endpoint ${endpoint.description} failed: ${error.response?.status}`);
-          
-          if (endpoint === endpoints[endpoints.length - 1]) {
-             // If all failed, but we have a stored Location ID that we couldn't verify, 
-             // we might still return it as a "known" location to prevent UI from thinking we are disconnected
-             // provided the error wasn't an auth error (401)
-             if (storedLocationId && error.response?.status !== 401) {
-               console.log('[GHL API] API calls failed but token exists. Returning stored location as fallback.');
-               return [{ id: storedLocationId, name: 'Configured Location' }];
-             }
-             
-             throw new Error(`Failed to fetch locations: ${error.response?.data?.message || error.response?.statusText || error.message}`);
-          }
-        } else {
-          throw error;
-        }
-      }
-    }
-    
-    return [];
-  }
-
   async getContactCustomFields(locationId: string): Promise<any[]> {
-    const token = await this.getPrivateToken();
+    const token = await this.getAuthToken(locationId);
     
     try {
       console.log(`[GHL API] Fetching contact custom fields for location: ${locationId}`);
@@ -161,7 +154,7 @@ export class GHLAPI {
   }
 
   async getOpportunityCustomFields(locationId: string): Promise<any[]> {
-    const token = await this.getPrivateToken();
+    const token = await this.getAuthToken(locationId);
     
     try {
       console.log(`[GHL API] Fetching opportunity custom fields for location: ${locationId}`);
@@ -191,7 +184,7 @@ export class GHLAPI {
   }
 
   async getObjectCustomFields(locationId: string): Promise<any[]> {
-    const token = await this.getPrivateToken();
+    const token = await this.getAuthToken(locationId);
     
     try {
       console.log(`[GHL API] Fetching object custom fields for location: ${locationId}`);
@@ -343,7 +336,7 @@ export class GHLAPI {
   }
 
   async createContact(locationId: string, contactData: GHLContact): Promise<any> {
-    const token = await this.getPrivateToken();
+    const token = await this.getAuthToken(locationId);
     
     try {
       const response = await this.client.post('/contacts', contactData, {
@@ -366,7 +359,7 @@ export class GHLAPI {
   }
 
   async getContact(locationId: string, contactId: string): Promise<any> {
-    const token = await this.getPrivateToken();
+    const token = await this.getAuthToken(locationId);
     
     try {
       const response = await this.client.get(`/contacts/${contactId}`, {
@@ -393,7 +386,7 @@ export class GHLAPI {
   }
 
   async addTagsToContact(locationId: string, contactId: string, tags: string[]): Promise<any> {
-    const token = await this.getPrivateToken();
+    const token = await this.getAuthToken(locationId);
     
     try {
       // First get the contact to see existing tags
@@ -431,7 +424,7 @@ export class GHLAPI {
   }
 
   async createOpportunity(locationId: string, contactId: string, opportunityData: any): Promise<any> {
-    const token = await this.getPrivateToken();
+    const token = await this.getAuthToken(locationId);
     
     try {
       const response = await this.client.post('/opportunities', {
@@ -559,7 +552,7 @@ export class GHLAPI {
 
   // Create a custom field in GHL if it doesn't exist
   async ensureCustomField(locationId: string, fieldName: string, fieldLabel: string, fieldType: string = 'TEXT'): Promise<void> {
-    const token = await this.getPrivateToken();
+    const token = await this.getAuthToken(locationId);
     
     try {
       // First, check if field already exists
@@ -617,12 +610,12 @@ export class GHLAPI {
   // NOTE: These endpoints need to be verified with GoHighLevel API documentation
 
   async getCalendars(locationId: string): Promise<any[]> {
-    const token = await this.getPrivateToken();
+    const token = await this.getAuthToken(locationId);
     
     console.log(`[GHL API] Fetching calendars for location: ${locationId}`);
     
     // Try multiple endpoint patterns based on GHL API v2 documentation
-    // DIAGNOSTIC RESULT: /calendars/ (with trailing slash) is the ONLY working endpoint for Private Tokens
+    // DIAGNOSTIC RESULT: /calendars/ (with trailing slash) is the ONLY working endpoint
     const endpoints = [
       // Pattern 1: /calendars/ with locationId param (CONFIRMED WORKING)
       { url: '/calendars/', params: { locationId }, description: '/calendars/ with locationId param (CONFIRMED)' },
@@ -699,7 +692,7 @@ export class GHLAPI {
   }
 
   async getCalendar(calendarId: string, locationId: string): Promise<any> {
-    const token = await this.getPrivateToken();
+    const token = await this.getAuthToken(locationId);
     
     try {
       const response = await this.client.get(`/locations/${locationId}/calendars/${calendarId}`, {
@@ -718,7 +711,7 @@ export class GHLAPI {
   }
 
   async getCalendarAppointments(calendarId: string, locationId: string, filters?: { startDate?: string; endDate?: string }): Promise<any[]> {
-    const token = await this.getPrivateToken();
+    const token = await this.getAuthToken(locationId);
     
     try {
       const params: any = { 
@@ -752,7 +745,7 @@ export class GHLAPI {
   }
 
   async createCalendarAppointment(calendarId: string, locationId: string, appointmentData: any): Promise<any> {
-    const token = await this.getPrivateToken();
+    const token = await this.getAuthToken(locationId);
     
     try {
       // Try /calendars/events endpoint (confirmed to exist per API docs)
@@ -791,7 +784,7 @@ export class GHLAPI {
   }
 
   async updateCalendarAppointment(calendarId: string, appointmentId: string, locationId: string, appointmentData: any): Promise<any> {
-    const token = await this.getPrivateToken();
+    const token = await this.getAuthToken(locationId);
     
     try {
       // Try /calendars/events/{booking_id} endpoint (confirmed per API docs)
@@ -828,7 +821,7 @@ export class GHLAPI {
   }
 
   async deleteCalendarAppointment(calendarId: string, appointmentId: string, locationId: string): Promise<void> {
-    const token = await this.getPrivateToken();
+    const token = await this.getAuthToken(locationId);
     
     try {
       // Try /calendars/events/{booking_id} endpoint
