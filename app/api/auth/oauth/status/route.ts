@@ -69,19 +69,40 @@ export async function GET(request: NextRequest) {
         });
         
         tokenActuallyWorks = testResponse.ok;
-        console.log('[OAuth Status] Token test result:', {
-          status: testResponse.status,
-          works: tokenActuallyWorks,
-        });
+        
+        if (!testResponse.ok) {
+          // Log error details for debugging
+          const errorText = await testResponse.text().catch(() => 'Unable to read error response');
+          console.log('[OAuth Status] Token test failed:', {
+            status: testResponse.status,
+            statusText: testResponse.statusText,
+            errorText: errorText.substring(0, 200), // Limit error text length
+            locationId,
+          });
+        } else {
+          console.log('[OAuth Status] Token test result:', {
+            status: testResponse.status,
+            works: tokenActuallyWorks,
+            locationId,
+          });
+        }
         
         // If token works, override isExpired to false (token is clearly valid)
         if (tokenActuallyWorks) {
           isExpired = false;
           console.log('[OAuth Status] Token works - overriding expiration status');
+        } else {
+          // If token test fails, mark as expired (token is actually invalid)
+          isExpired = true;
+          console.log('[OAuth Status] Token test failed - marking as expired');
         }
       } catch (testError) {
-        console.warn('[OAuth Status] Token test failed:', testError);
-        // If test fails, keep the original expiration status
+        console.warn('[OAuth Status] Token test exception:', {
+          error: testError instanceof Error ? testError.message : String(testError),
+          locationId,
+        });
+        // If test throws an exception (network error, etc.), don't mark as expired
+        // Keep the original expiration status based on timestamp
       }
     }
 

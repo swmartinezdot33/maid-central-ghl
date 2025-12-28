@@ -15,7 +15,7 @@ interface OAuthGuardProps {
  */
 export function OAuthGuard({ children, fallback }: OAuthGuardProps) {
   const { ghlData, loading: iframeLoading } = useGHLIframe();
-  const [oauthStatus, setOauthStatus] = useState<{ installed: boolean; isExpired?: boolean } | null>(null);
+  const [oauthStatus, setOauthStatus] = useState<{ installed: boolean; isExpired?: boolean; tokenActuallyWorks?: boolean } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -42,20 +42,26 @@ export function OAuthGuard({ children, fallback }: OAuthGuardProps) {
       // The API returns installed: true if there's a valid accessToken
       const isInstalled = data.installed === true;
       const isExpired = data.isExpired === true;
+      const tokenActuallyWorks = data.tokenActuallyWorks === true;
       
       console.log('[OAuthGuard] OAuth status check:', { 
         isInstalled, 
         isExpired,
+        tokenActuallyWorks,
         apiInstalled: data.installed,
         apiHasToken: data.hasToken,
         apiIsExpired: data.isExpired,
+        apiTokenActuallyWorks: data.tokenActuallyWorks,
         locationId: data.locationId,
         fullResponse: data
       });
       
       setOauthStatus({
         installed: isInstalled,
-        isExpired: isExpired,
+        // Only mark as expired if token actually fails the API test
+        // If tokenActuallyWorks is true, ignore the timestamp-based expiration
+        isExpired: isExpired && tokenActuallyWorks !== true,
+        tokenActuallyWorks,
       });
     } catch (error) {
       console.error('[OAuthGuard] Error checking OAuth status:', error);
@@ -120,7 +126,9 @@ export function OAuthGuard({ children, fallback }: OAuthGuardProps) {
     );
   }
 
-  if (oauthStatus.isExpired) {
+  // Only show expired message if token actually fails the API test
+  // If tokenActuallyWorks is true, the token is valid regardless of timestamp
+  if (oauthStatus.isExpired && oauthStatus.tokenActuallyWorks !== true) {
     return (
       fallback || (
         <div className="container">
