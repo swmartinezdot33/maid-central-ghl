@@ -58,9 +58,9 @@ export function OAuthGuard({ children, fallback }: OAuthGuardProps) {
       
       setOauthStatus({
         installed: isInstalled,
-        // Only mark as expired if token actually fails the API test
-        // If tokenActuallyWorks is true, ignore the timestamp-based expiration
-        isExpired: isExpired && tokenActuallyWorks !== true,
+        // If tokenActuallyWorks is true, the token is valid - never show as expired
+        // Otherwise, use the isExpired value from the API (which includes token test results)
+        isExpired: tokenActuallyWorks === true ? false : isExpired,
         tokenActuallyWorks,
       });
     } catch (error) {
@@ -126,9 +126,11 @@ export function OAuthGuard({ children, fallback }: OAuthGuardProps) {
     );
   }
 
-  // Only show expired message if token actually fails the API test
+  // Only show expired message if:
+  // - Token test failed (tokenActuallyWorks === false), OR
+  // - Token test wasn't run and timestamp says expired
   // If tokenActuallyWorks is true, the token is valid regardless of timestamp
-  if (oauthStatus.isExpired && oauthStatus.tokenActuallyWorks !== true) {
+  if (oauthStatus.isExpired) {
     return (
       fallback || (
         <div className="container">
