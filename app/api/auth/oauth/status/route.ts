@@ -54,55 +54,65 @@ export async function GET(request: NextRequest) {
     const installed = hasAccessToken; // Don't check expiration here - that's handled separately
     
     // If we have a token, test it with a lightweight API call to verify it actually works
-    // This is more reliable than just checking the timestamp
-    let tokenActuallyWorks = false;
+    // Only test if timestamp suggests it might be expired (to avoid unnecessary API calls)
+    // If timestamp shows it's clearly valid, trust that and skip the test
+    let tokenActuallyWorks: boolean | undefined = undefined;
     if (hasAccessToken && oauthToken?.accessToken) {
-      try {
-        // Make a lightweight API call to verify the token works
-        const testResponse = await fetch(`https://services.leadconnectorhq.com/locations/${locationId}`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${oauthToken.accessToken}`,
-            'Version': '2021-07-28',
-            'Content-Type': 'application/json',
-          },
-        });
-        
-        tokenActuallyWorks = testResponse.ok;
-        
-        if (!testResponse.ok) {
-          // Log error details for debugging
-          const errorText = await testResponse.text().catch(() => 'Unable to read error response');
-          console.log('[OAuth Status] Token test failed:', {
-            status: testResponse.status,
-            statusText: testResponse.statusText,
-            errorText: errorText.substring(0, 200), // Limit error text length
+      // Only test the token if timestamp suggests it might be expired
+      // This avoids unnecessary API calls and network issues causing false negatives
+      if (isExpired) {
+        try {
+          console.log('[OAuth Status] Token timestamp suggests expiration - testing with API call');
+          // Make a lightweight API call to verify the token works
+          const testResponse = await fetch(`https://services.leadconnectorhq.com/locations/${locationId}`, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${oauthToken.accessToken}`,
+              'Version': '2021-07-28',
+              'Content-Type': 'application/json',
+            },
+          });
+          
+          tokenActuallyWorks = testResponse.ok;
+          
+          if (!testResponse.ok) {
+            // Log error details for debugging
+            const errorText = await testResponse.text().catch(() => 'Unable to read error response');
+            console.log('[OAuth Status] Token test failed:', {
+              status: testResponse.status,
+              statusText: testResponse.statusText,
+              errorText: errorText.substring(0, 200), // Limit error text length
+              locationId,
+            });
+          } else {
+            console.log('[OAuth Status] Token test passed - token is working despite timestamp:', {
+              status: testResponse.status,
+              locationId,
+            });
+          }
+          
+          // If token works, override isExpired to false (token is clearly valid)
+          if (tokenActuallyWorks) {
+            isExpired = false;
+            console.log('[OAuth Status] Token works - overriding expiration status');
+          } else {
+            // If token test fails, keep isExpired as true (token is actually invalid)
+            console.log('[OAuth Status] Token test confirmed expiration');
+          }
+        } catch (testError) {
+          console.warn('[OAuth Status] Token test exception (network error, etc.):', {
+            error: testError instanceof Error ? testError.message : String(testError),
             locationId,
           });
-        } else {
-          console.log('[OAuth Status] Token test result:', {
-            status: testResponse.status,
-            works: tokenActuallyWorks,
-            locationId,
-          });
+          // If test throws an exception (network error, etc.), trust the timestamp
+          // Don't mark as expired due to network issues
+          tokenActuallyWorks = undefined;
         }
-        
-        // If token works, override isExpired to false (token is clearly valid)
-        if (tokenActuallyWorks) {
-          isExpired = false;
-          console.log('[OAuth Status] Token works - overriding expiration status');
-        } else {
-          // If token test fails, mark as expired (token is actually invalid)
-          isExpired = true;
-          console.log('[OAuth Status] Token test failed - marking as expired');
-        }
-      } catch (testError) {
-        console.warn('[OAuth Status] Token test exception:', {
-          error: testError instanceof Error ? testError.message : String(testError),
-          locationId,
-        });
-        // If test throws an exception (network error, etc.), don't mark as expired
-        // Keep the original expiration status based on timestamp
+      } else {
+        // Token timestamp shows it's valid - no need to test
+        // Trust the timestamp and assume token works
+        tokenActuallyWorks = true;
+        console.log('[OAuth Status] Token timestamp is valid - assuming token works (skipping API test)');
       }
     }
 
