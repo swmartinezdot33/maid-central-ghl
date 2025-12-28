@@ -26,22 +26,73 @@ export async function GET(request: NextRequest) {
     const config = await getIntegrationConfig(locationId);
 
     // Check if token is expired
-    const isExpired = oauthToken?.expiresAt 
-      ? Date.now() >= oauthToken.expiresAt 
-      : false;
+    // Note: GHL tokens might still work even if timestamp suggests expiration
+    // We'll be lenient here - only mark as expired if timestamp is clearly past
+    // and there's a significant buffer (5 minutes) to account for clock skew
+    let isExpired = false;
+    if (oauthToken?.expiresAt) {
+      const now = Date.now();
+      const expiresAt = typeof oauthToken.expiresAt === 'string' 
+        ? parseInt(oauthToken.expiresAt, 10) 
+        : oauthToken.expiresAt;
+      // Add 5 minute buffer - if token expires in less than 5 minutes, consider it expired
+      // This accounts for clock skew and gives a safety margin
+      isExpired = now >= (expiresAt - (5 * 60 * 1000));
+      console.log('[OAuth Status] Expiration check:', {
+        now,
+        expiresAt,
+        expiresAtDate: new Date(expiresAt).toISOString(),
+        nowDate: new Date(now).toISOString(),
+        isExpired,
+        bufferMinutes: 5,
+      });
+    }
 
     // OAuth is installed if we have a token with an access token
     // Expiration is checked separately - expired tokens are still "installed" but need refresh
     const hasAccessToken = !!(oauthToken && oauthToken.accessToken);
     const installed = hasAccessToken; // Don't check expiration here - that's handled separately
     
+    // If we have a token, test it with a lightweight API call to verify it actually works
+    // This is more reliable than just checking the timestamp
+    let tokenActuallyWorks = false;
+    if (hasAccessToken && oauthToken?.accessToken) {
+      try {
+        // Make a lightweight API call to verify the token works
+        const testResponse = await fetch(`https://services.leadconnectorhq.com/locations/${locationId}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${oauthToken.accessToken}`,
+            'Version': '2021-07-28',
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        tokenActuallyWorks = testResponse.ok;
+        console.log('[OAuth Status] Token test result:', {
+          status: testResponse.status,
+          works: tokenActuallyWorks,
+        });
+        
+        // If token works, override isExpired to false (token is clearly valid)
+        if (tokenActuallyWorks) {
+          isExpired = false;
+          console.log('[OAuth Status] Token works - overriding expiration status');
+        }
+      } catch (testError) {
+        console.warn('[OAuth Status] Token test failed:', testError);
+        // If test fails, keep the original expiration status
+      }
+    }
+
     console.log('[OAuth Status] Final status:', { 
       installed, 
       isExpired, 
       hasToken: hasAccessToken,
       hasRefreshToken: !!oauthToken?.refreshToken,
       locationId,
-      tokenExists: !!oauthToken
+      tokenExists: !!oauthToken,
+      tokenActuallyWorks,
     });
 
     return NextResponse.json({
@@ -49,6 +100,7 @@ export async function GET(request: NextRequest) {
       locationId,
       hasToken: hasAccessToken,
       isExpired,
+      tokenActuallyWorks, // Include this so UI can show accurate status
       canRefresh: !!oauthToken?.refreshToken,
       config: config ? {
         enabled: config.enabled,

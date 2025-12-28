@@ -214,7 +214,8 @@ function SetupPageContent() {
                 Location ID: {oauthStatus.locationId}
               </p>
             )}
-            {oauthStatus.isExpired && (
+            {/* Only show expired warning if token actually fails, not just based on timestamp */}
+            {oauthStatus.isExpired && oauthStatus.tokenActuallyWorks === false && (
               <p style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#856404' }}>
                 ⚠ Token expired. Please reinstall the app.
               </p>
