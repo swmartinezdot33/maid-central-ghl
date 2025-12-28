@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
-import { storeMaidCentralCredentials, type MaidCentralCredentials } from '@/lib/kv';
-import { maidCentralAPI } from '@/lib/maid-central';
+import { storeMaidCentralCredentials, getMaidCentralCredentials, type MaidCentralCredentials } from '@/lib/kv';
 import { getLocationIdFromRequest } from '@/lib/request-utils';
 
 export async function POST(request: NextRequest) {
@@ -32,12 +31,52 @@ export async function POST(request: NextRequest) {
 
     await storeMaidCentralCredentials(credentials, locationId);
 
-    // Test the credentials by attempting authentication
+    // Test the credentials by attempting authentication with locationId
     try {
-      await maidCentralAPI.authenticate();
+      // Get the credentials we just stored to validate them
+      const storedCreds = await getMaidCentralCredentials(locationId);
+      if (!storedCreds || !storedCreds.username || !storedCreds.password) {
+        throw new Error('Failed to retrieve stored credentials for validation');
+      }
+
+      // Attempt to authenticate with Maid Central API
+      const params = new URLSearchParams({
+        username: storedCreds.username,
+        password: storedCreds.password,
+        grant_type: 'password',
+      });
+
+      const response = await fetch(`${process.env.MAID_CENTRAL_API_BASE_URL || 'https://api.maidcentral.com'}/token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: params.toString(),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'Authentication failed' }));
+        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const tokenData = await response.json();
+      
+      // Update credentials with the token we received
+      const updatedCreds: MaidCentralCredentials = {
+        ...storedCreds,
+        accessToken: tokenData.access_token,
+        refreshToken: tokenData.refresh_token,
+        tokenExpiresAt: tokenData.expires_in
+          ? Date.now() + (tokenData.expires_in * 1000)
+          : Date.now() + 3600 * 1000,
+      };
+      
+      await storeMaidCentralCredentials(updatedCreds, locationId);
+
       return NextResponse.json({ success: true, message: 'Credentials saved and validated' });
     } catch (authError) {
       // Store credentials even if auth fails (might be temporary issue)
+      console.error('[Credentials API] Validation error:', authError);
       return NextResponse.json(
         { 
           success: true, 
