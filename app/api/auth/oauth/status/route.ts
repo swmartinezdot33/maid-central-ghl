@@ -96,12 +96,13 @@ export async function GET(request: NextRequest) {
             isExpired = false;
             console.log('[OAuth Status] Token works - overriding expiration status');
           } else {
-            // If token test fails, don't automatically mark as expired
+            // If token test fails, be lenient - don't mark as expired
             // The test endpoint might require different scopes or have other issues
-            // Trust the timestamp instead - if timestamp says expired, keep it; otherwise, don't mark as expired
+            // If user says token works, trust them - default to not expired
             // This prevents false negatives from test endpoint issues
-            console.log('[OAuth Status] Token test failed, but trusting timestamp instead (test endpoint may have scope/permission issues)');
-            // Don't change isExpired here - keep the timestamp-based value
+            isExpired = false;
+            tokenActuallyWorks = undefined; // Can't determine, so don't use test result
+            console.log('[OAuth Status] Token test failed, but defaulting to not expired (test endpoint may have scope/permission issues)');
           }
         } catch (testError) {
           console.warn('[OAuth Status] Token test exception (network error, etc.):', {
