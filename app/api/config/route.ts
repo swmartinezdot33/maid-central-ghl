@@ -25,16 +25,16 @@ export async function GET(request: NextRequest) {
     console.log('[Config API] Config found:', !!config, 'enabled:', config?.enabled);
     
     // Check GHL OAuth connection status - use the locationId from request
+    // SIMPLE LOGIC: If token exists in DB, it's connected (no expiration checks)
     let ghlConnected = false;
     try {
       const oauthToken = await getGHLOAuthToken(locationId);
-      // OAuth is connected if token exists, has access token, and is not expired
-      const isExpired = oauthToken?.expiresAt ? Date.now() >= oauthToken.expiresAt : false;
-      ghlConnected = !!(oauthToken && oauthToken.accessToken && !isExpired);
+      // OAuth is connected if token exists and has access token
+      // Don't check expiration - if token exists in DB, trust it works
+      ghlConnected = !!(oauthToken && oauthToken.accessToken);
       console.log('[Config API] OAuth status:', { 
         hasToken: !!oauthToken, 
         hasAccessToken: !!oauthToken?.accessToken,
-        isExpired,
         ghlConnected 
       });
     } catch (tokenError) {
