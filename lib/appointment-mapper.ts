@@ -84,7 +84,7 @@ export function mapGHLToMaidCentral(ghlAppointment: any): any {
     Phone: ghlAppointment.contact?.phone || ghlAppointment.phone,
     FirstName: ghlAppointment.contact?.firstName || ghlAppointment.firstName,
     LastName: ghlAppointment.contact?.lastName || ghlAppointment.lastName,
-
+    
     // Address
     Address: ghlAppointment.address || ghlAppointment.address1,
     City: ghlAppointment.city,
