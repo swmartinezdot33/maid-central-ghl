@@ -13,6 +13,20 @@ interface CredentialsStatus {
   } | null;
 }
 
+// Utility function to mask credentials (show first 4 and last 4 characters)
+function maskCredential(value: string): string {
+  if (!value) return '';
+  if (value.length <= 8) {
+    // If value is 8 chars or less, just show stars (don't reveal anything)
+    return '*'.repeat(value.length);
+  }
+  const first4 = value.substring(0, 4);
+  const last4 = value.substring(value.length - 4);
+  const middleLength = value.length - 8;
+  const stars = '*'.repeat(Math.max(4, middleLength));
+  return `${first4}${stars}${last4}`;
+}
+
 function SetupPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -161,8 +175,13 @@ function SetupPageContent() {
           <div className="mb-2">
             <span className="status-badge success">Currently configured</span>
             <p style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#666' }}>
-              Username: {mcCredentials.credentials.username}
+              Username: {maskCredential(mcCredentials.credentials.username)}
             </p>
+            {mcCredentials.credentials.hasPassword && (
+              <p style={{ marginTop: '0.25rem', fontSize: '0.9rem', color: '#666' }}>
+                Password: ******** (configured)
+              </p>
+            )}
           </div>
         )}
 
