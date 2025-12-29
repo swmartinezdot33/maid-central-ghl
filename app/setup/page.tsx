@@ -23,7 +23,7 @@ function SetupPageContent() {
   
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [oauthStatus, setOauthStatus] = useState<{ installed: boolean; locationId?: string; isExpired?: boolean } | null>(null);
+  const [oauthStatus, setOauthStatus] = useState<{ installed: boolean; locationId?: string; isExpired?: boolean; tokenActuallyWorks?: boolean } | null>(null);
   const [loadingOAuth, setLoadingOAuth] = useState(true);
   const { ghlData } = useGHLIframe();
 
