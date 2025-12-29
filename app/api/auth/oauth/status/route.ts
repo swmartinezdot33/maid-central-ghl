@@ -104,9 +104,22 @@ export async function GET(request: NextRequest) {
             error: testError instanceof Error ? testError.message : String(testError),
             locationId,
           });
-          // If test throws an exception (network error, etc.), trust the timestamp
-          // Don't mark as expired due to network issues
-          tokenActuallyWorks = undefined;
+          // If test throws an exception (network error, etc.), be lenient
+          // If token was installed recently (within last 24 hours), assume it still works
+          // Otherwise, we can't determine, so default to trusting user (don't mark as expired)
+          const installedRecently = oauthToken?.installedAt && 
+            (Date.now() - new Date(oauthToken.installedAt).getTime()) < (24 * 60 * 60 * 1000);
+          
+          if (installedRecently) {
+            tokenActuallyWorks = true;
+            isExpired = false;
+            console.log('[OAuth Status] Token test failed but installed recently - assuming valid');
+          } else {
+            // Can't determine - default to not expired (trust the user)
+            tokenActuallyWorks = undefined;
+            isExpired = false; // Don't mark as expired if we can't verify
+            console.log('[OAuth Status] Token test failed - defaulting to not expired (can\'t verify)');
+          }
         }
       } else {
         // Token timestamp shows it's valid - no need to test
