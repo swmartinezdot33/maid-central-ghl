@@ -108,17 +108,12 @@ export class GHLAPI {
     
     const oauthToken = await this.getOAuthToken(locationId);
     if (!oauthToken) {
-      // Check if token exists but is expired
+      // Check if token exists but has no access token
       const storedToken = await getGHLOAuthToken(locationId);
-      if (storedToken) {
-        const isExpired = storedToken.expiresAt ? Date.now() >= storedToken.expiresAt : false;
-        if (isExpired) {
-          throw new Error(`GHL OAuth token for location ${locationId} has expired. Please reinstall the app via OAuth.`);
-        }
-        if (!storedToken.accessToken) {
-          throw new Error(`GHL OAuth token for location ${locationId} is missing access token. Please reinstall the app via OAuth.`);
-        }
+      if (storedToken && !storedToken.accessToken) {
+        throw new Error(`GHL OAuth token for location ${locationId} is missing access token. Please reinstall the app via OAuth.`);
       }
+      // Don't check expiration - if token exists, use it. If it's actually expired, API will return 401
       throw new Error(`GHL OAuth not configured for location ${locationId}. Please install the app via OAuth in the setup page.`);
     }
     
