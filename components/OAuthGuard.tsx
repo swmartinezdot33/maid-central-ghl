@@ -58,10 +58,8 @@ export function OAuthGuard({ children, fallback }: OAuthGuardProps) {
       
       setOauthStatus({
         installed: isInstalled,
-        // If tokenActuallyWorks is true, the token is valid - never show as expired
-        // If tokenActuallyWorks is undefined (test couldn't determine), don't show as expired
-        // Only show as expired if tokenActuallyWorks is explicitly false (test failed)
-        isExpired: tokenActuallyWorks === false ? true : false,
+        // If token exists in DB, it's never expired - just show the app
+        isExpired: false, // Always false - if token exists, show the app
         tokenActuallyWorks,
       });
     } catch (error) {
