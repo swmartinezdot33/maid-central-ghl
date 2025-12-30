@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useGHLIframe } from '@/lib/ghl-iframe-context';
 import { LocationGuard } from '@/components/LocationGuard';
 import { OAuthGuard } from '@/components/OAuthGuard';
@@ -14,13 +13,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import {
   CheckCircleIcon,
   XCircleIcon,
-  ArrowRightIcon,
   DocumentTextIcon,
-  UserGroupIcon,
-  CalendarIcon,
-  Cog6ToothIcon,
-  WrenchScrewdriverIcon,
-  PuzzlePieceIcon,
 } from '@heroicons/react/24/outline';
 
 interface ConfigStatus {
@@ -361,49 +354,6 @@ export default function Home() {
                 </div>
               </Card>
 
-              {/* Quick Actions */}
-              <Card padding="lg">
-                <h2 className="text-xl font-semibold text-gray-900 mb-6">Quick Actions</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <Link href="/setup">
-                    <Button variant="primary" className="w-full justify-between group">
-                      <div className="flex items-center gap-2">
-                        <WrenchScrewdriverIcon className="w-5 h-5" />
-                        <span>Setup</span>
-                      </div>
-                      <ArrowRightIcon className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                    </Button>
-                  </Link>
-                  <Link href="/settings">
-                    <Button variant="secondary" className="w-full justify-between group">
-                      <div className="flex items-center gap-2">
-                        <Cog6ToothIcon className="w-5 h-5" />
-                        <span>Settings</span>
-                      </div>
-                      <ArrowRightIcon className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                    </Button>
-                  </Link>
-                  <Link href="/settings">
-                    <Button variant="secondary" className="w-full justify-between group">
-                      <div className="flex items-center gap-2">
-                        <PuzzlePieceIcon className="w-5 h-5" />
-                        <span>Field Mapping</span>
-                      </div>
-                      <ArrowRightIcon className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                    </Button>
-                  </Link>
-                  <Link href="/quotes">
-                    <Button variant="secondary" className="w-full justify-between group">
-                      <div className="flex items-center gap-2">
-                        <DocumentTextIcon className="w-5 h-5" />
-                        <span>Quotes</span>
-                      </div>
-                      <ArrowRightIcon className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                    </Button>
-                  </Link>
-                </div>
-              </Card>
-
               {/* Tags Display */}
               {(status?.config?.ghlTags && status.config.ghlTags.length > 0) && (
                 <Card padding="lg">
@@ -417,57 +367,6 @@ export default function Home() {
                   </div>
                 </Card>
               )}
-
-              {/* Quote Syncing Information */}
-              <Card padding="lg">
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">Quote Syncing</h2>
-                {status?.config?.quotePollingEnabled ? (
-                  <div className="space-y-4">
-                    <Alert variant="success">
-                      <strong>Automatic polling is enabled!</strong> Quotes will be automatically synced every {status.config.quotePollingInterval || 15} minutes.
-                    </Alert>
-                    {status.config.lastQuotePollAt && (
-                      <p className="text-sm text-gray-600">
-                        Last poll: {new Date(status.config.lastQuotePollAt).toLocaleString()}
-                      </p>
-                    )}
-                    <div className="bg-gray-50 rounded-lg p-4">
-                      <p className="text-sm text-gray-700 mb-2">
-                        <strong>Manual Sync Options:</strong>
-                      </p>
-                      <p className="text-sm text-gray-700 mb-2">
-                        • Use the Quotes page to view and sync individual quotes
-                      </p>
-                      <p className="text-sm text-gray-700">
-                        • Use the API endpoint directly: <code className="bg-white px-2 py-1 rounded text-xs font-mono">{typeof window !== 'undefined' ? `${window.location.origin}/api/webhook/quote?quoteId=YOUR_QUOTE_ID` : 'Loading...'}</code>
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <p className="text-gray-600 mb-4">
-                      Since MaidCentral doesn&apos;t support webhooks, you can sync quotes manually or enable automatic polling:
-                    </p>
-                    <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                      <p className="text-sm text-gray-700 mb-2">
-                        <strong>Option 1:</strong> Enable automatic polling in Settings (recommended)
-                      </p>
-                      <p className="text-sm text-gray-700 mb-2">
-                        <strong>Option 2:</strong> Use the Quotes page to view and sync individual quotes
-                      </p>
-                      <p className="text-sm text-gray-700">
-                        <strong>Option 3:</strong> Use the API endpoint directly (POST or GET):
-                      </p>
-                      <code className="block mt-2 p-3 bg-white rounded border text-xs font-mono break-all">
-                        {typeof window !== 'undefined' ? `${window.location.origin}/api/webhook/quote?quoteId=YOUR_QUOTE_ID` : 'Loading...'}
-                      </code>
-                    </div>
-                    <Alert variant="info">
-                      <strong>Tip:</strong> Enable automatic quote polling in Settings to automatically sync new quotes every 15 minutes (configurable).
-                    </Alert>
-                  </div>
-                )}
-              </Card>
             </>
           )}
         </div>

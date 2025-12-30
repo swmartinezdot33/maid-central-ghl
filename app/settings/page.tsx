@@ -362,6 +362,7 @@ function SettingsPageContent() {
         <Tabs defaultValue="integration">
           <TabsList>
             <TabsTrigger value="integration">Integration Controls</TabsTrigger>
+            <TabsTrigger value="quote-sync">Quote Sync</TabsTrigger>
             <TabsTrigger value="appointments">Appointment Sync</TabsTrigger>
             <TabsTrigger value="field-mapping">Field Mapping</TabsTrigger>
             <TabsTrigger value="tags">Tags & Fields</TabsTrigger>
@@ -384,72 +385,11 @@ function SettingsPageContent() {
                 <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                   <div className="flex-1">
                     <Toggle
-                      label="Sync Quotes"
-                      description="When enabled, new quotes from MaidCentral will automatically create contacts and opportunities in CRM"
-                      checked={config?.syncQuotes !== false}
-                      onChange={(e) => setConfig({ ...config!, syncQuotes: e.target.checked })}
-                      disabled={!config?.enabled}
-                    />
-                  </div>
-                </div>
-
-                {config?.syncQuotes !== false && (
-                  <div className="p-4 bg-gray-50 rounded-lg space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <Toggle
-                          label="Automatic Quote Polling"
-                          description="Automatically poll for new quotes at regular intervals"
-                          checked={config?.quotePollingEnabled || false}
-                          onChange={(e) => setConfig({ ...config!, quotePollingEnabled: e.target.checked })}
-                          disabled={!config?.enabled || !config?.syncQuotes}
-                        />
-                      </div>
-                    </div>
-
-                    {config?.quotePollingEnabled && (
-                      <div>
-                        <Input
-                          label="Polling Interval (minutes)"
-                          type="number"
-                          min="5"
-                          max="1440"
-                          step="5"
-                          value={config?.quotePollingInterval || 15}
-                          onChange={(e) => setConfig({ ...config!, quotePollingInterval: parseInt(e.target.value) || 15 })}
-                          disabled={!config?.enabled || !config?.syncQuotes || !config?.quotePollingEnabled}
-                          helperText="How often to automatically check for new quotes (5-1440 minutes). Default: 15 minutes."
-                        />
-                        {config?.lastQuotePollAt && (
-                          <p className="text-sm text-gray-500 mt-2">
-                            Last poll: {new Date(config.lastQuotePollAt).toLocaleString()}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                  <div className="flex-1">
-                    <Toggle
                       label="Sync Customers"
                       description="When enabled, customer updates from MaidCentral will sync to CRM"
                       checked={config?.syncCustomers || false}
                       onChange={(e) => setConfig({ ...config!, syncCustomers: e.target.checked })}
                       disabled={!config?.enabled}
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                  <div className="flex-1">
-                    <Toggle
-                      label="Create Opportunities"
-                      description="When enabled, an opportunity/deal will be created in CRM for each quote synced"
-                      checked={config?.createOpportunities !== false}
-                      onChange={(e) => setConfig({ ...config!, createOpportunities: e.target.checked })}
-                      disabled={!config?.enabled || !config?.syncQuotes}
                     />
                   </div>
                 </div>
@@ -465,6 +405,140 @@ function SettingsPageContent() {
                     />
                   </div>
                 </div>
+              </div>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="quote-sync">
+            <Card padding="lg">
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900 mb-2">Quote Syncing Configuration</h2>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Configure how quotes from MaidCentral are synced to CRM contacts and opportunities.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div className="flex-1">
+                    <Toggle
+                      label="Enable Quote Syncing"
+                      description="When enabled, new quotes from MaidCentral will automatically create contacts and opportunities in CRM"
+                      checked={config?.syncQuotes !== false}
+                      onChange={(e) => setConfig({ ...config!, syncQuotes: e.target.checked })}
+                      disabled={!config?.enabled}
+                    />
+                  </div>
+                </div>
+
+                {config?.syncQuotes !== false && (
+                  <>
+                    <div className="p-4 bg-primary-50 border border-primary-200 rounded-lg space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <Toggle
+                            label="Automatic Quote Polling"
+                            description="Automatically poll for new quotes at regular intervals. When disabled, quotes must be synced manually or via webhook."
+                            checked={config?.quotePollingEnabled || false}
+                            onChange={(e) => setConfig({ ...config!, quotePollingEnabled: e.target.checked })}
+                            disabled={!config?.enabled || !config?.syncQuotes}
+                          />
+                        </div>
+                      </div>
+
+                      {config?.quotePollingEnabled && (
+                        <div>
+                          <Input
+                            label="Polling Interval (minutes)"
+                            type="number"
+                            min="5"
+                            max="1440"
+                            step="5"
+                            value={config?.quotePollingInterval || 15}
+                            onChange={(e) => setConfig({ ...config!, quotePollingInterval: parseInt(e.target.value) || 15 })}
+                            disabled={!config?.enabled || !config?.syncQuotes || !config?.quotePollingEnabled}
+                            helperText="How often to automatically check for new quotes (5-1440 minutes). Default: 15 minutes."
+                          />
+                          {config?.lastQuotePollAt && (
+                            <div className="mt-3 p-3 bg-white rounded border border-primary-200">
+                              <p className="text-sm font-medium text-gray-700 mb-1">Last Poll Status</p>
+                              <p className="text-sm text-gray-600">
+                                Last poll: {new Date(config.lastQuotePollAt).toLocaleString()}
+                              </p>
+                              <p className="text-xs text-gray-500 mt-1">
+                                Next poll in approximately {Math.max(0, Math.round(((config.quotePollingInterval || 15) * 60 * 1000 - (Date.now() - config.lastQuotePollAt)) / 1000 / 60))} minutes
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                      <div className="flex-1">
+                        <Toggle
+                          label="Create Opportunities/Deals"
+                          description="When enabled, an opportunity/deal will be created in CRM for each quote synced. The opportunity will include the quote amount and details."
+                          checked={config?.createOpportunities !== false}
+                          onChange={(e) => setConfig({ ...config!, createOpportunities: e.target.checked })}
+                          disabled={!config?.enabled || !config?.syncQuotes}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-gray-50 rounded-lg">
+                      <h3 className="text-sm font-semibold text-gray-900 mb-3">Sync Methods</h3>
+                      <div className="space-y-2 text-sm text-gray-600">
+                        <div className="flex items-start gap-2">
+                          <CheckCircleIcon className="w-5 h-5 text-primary-600 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <p className="font-medium text-gray-900">Automatic Polling</p>
+                            <p className="text-xs text-gray-500">
+                              {config?.quotePollingEnabled 
+                                ? `Enabled - Polls every ${config.quotePollingInterval || 15} minutes`
+                                : 'Disabled - Enable above to use automatic polling'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <CheckCircleIcon className="w-5 h-5 text-primary-600 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <p className="font-medium text-gray-900">Webhook Endpoint</p>
+                            <p className="text-xs text-gray-500">
+                              Available at: <code className="bg-white px-1 py-0.5 rounded text-xs">{typeof window !== 'undefined' ? `${window.location.origin}/api/webhook/quote` : '/api/webhook/quote'}</code>
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <CheckCircleIcon className="w-5 h-5 text-primary-600 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <p className="font-medium text-gray-900">Manual Sync</p>
+                            <p className="text-xs text-gray-500">
+                              Use the Quotes page to view and sync individual quotes manually
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <Alert variant="info">
+                      <p className="font-medium mb-2">How Quote Syncing Works:</p>
+                      <ul className="text-sm space-y-1 list-disc list-inside">
+                        <li>When a quote is synced, a contact is created in CRM with all quote data</li>
+                        <li>If &quot;Create Opportunities&quot; is enabled, a deal/opportunity is also created</li>
+                        <li>Tags configured in the Tags & Fields tab will be added to contacts</li>
+                        <li>Custom fields are automatically created if needed (when auto-create is enabled)</li>
+                        <li>Duplicate quotes are automatically detected and skipped</li>
+                      </ul>
+                    </Alert>
+                  </>
+                )}
+
+                {config?.syncQuotes === false && (
+                  <Alert variant="warning">
+                    Quote syncing is currently disabled. Enable it above to start syncing quotes from MaidCentral to CRM.
+                  </Alert>
+                )}
               </div>
             </Card>
           </TabsContent>
