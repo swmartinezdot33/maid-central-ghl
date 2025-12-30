@@ -475,9 +475,18 @@ export async function getGHLOAuthToken(locationId: string): Promise<GHLOAuthToke
     console.log('[DB] Token data:', {
       hasAccessToken: !!row.access_token,
       accessTokenLength: row.access_token?.length,
+      accessTokenValue: row.access_token ? `${row.access_token.substring(0, 20)}...` : 'NULL/EMPTY',
       expiresAt: row.expires_at,
       expiresAtType: typeof row.expires_at,
     });
+    
+    // CRITICAL: If access_token is null or empty, treat as no token exists
+    // This can happen if token was stored incorrectly or corrupted
+    if (!row.access_token || row.access_token.trim() === '') {
+      console.warn('[DB] ⚠️  Token row exists but access_token is NULL or empty! Treating as no token.');
+      console.warn('[DB] This location needs to reinstall OAuth. LocationId:', row.location_id);
+      return null;
+    }
     
     // Handle expires_at - it might be stored as string or number
     let expiresAt: number | undefined;
