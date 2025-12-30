@@ -1,13 +1,13 @@
 import axios, { AxiosInstance } from 'axios';
-import { getGHLOAuthToken, type GHLOAuthToken } from './db';
+import { getGHLOAuthToken, storeGHLOAuthToken, type GHLOAuthToken } from './db';
 
 // GHL API v2 base URL
 const GHL_API_BASE_URL = 'https://services.leadconnectorhq.com';
 
-// GHL API v2.0 version header
-// IMPORTANT: GHL API v1.0 (with version '2021-07-28') has been sunset and is no longer supported.
-// ALL API calls MUST use v2.0 with version '2024-01-01'.
-const GHL_API_VERSION = '2024-01-01';
+// GHL API version header
+// According to GHL API documentation, the Version header should be '2021-04-15'
+// This is required for all API requests
+const GHL_API_VERSION = '2021-04-15';
 
 // GHL API v2 endpoints - OAuth only (marketplace app)
 
@@ -75,7 +75,87 @@ export class GHLAPI {
   }
 
   /**
+   * Refresh OAuth access token using refresh token
+   */
+  async refreshOAuthToken(locationId: string, refreshToken: string): Promise<GHLOAuthToken | null> {
+    try {
+      const clientId = process.env.GHL_CLIENT_ID;
+      const clientSecret = process.env.GHL_CLIENT_SECRET;
+
+      if (!clientId || !clientSecret) {
+        console.error('[GHL API] Cannot refresh token: GHL_CLIENT_ID or GHL_CLIENT_SECRET not configured');
+        return null;
+      }
+
+      console.log('[GHL API] Refreshing OAuth token for locationId:', locationId);
+
+      // Get existing token to preserve installedAt
+      const existingToken = await getGHLOAuthToken(locationId);
+
+      const tokenParams = new URLSearchParams({
+        grant_type: 'refresh_token',
+        client_id: clientId,
+        client_secret: clientSecret,
+        refresh_token: refreshToken,
+      });
+
+      const response = await fetch('https://services.leadconnectorhq.com/oauth/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: tokenParams.toString(),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[GHL API] Token refresh failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText,
+        });
+        return null;
+      }
+
+      const tokenData = await response.json();
+      
+      if (!tokenData.access_token) {
+        console.error('[GHL API] Token refresh response missing access_token');
+        return null;
+      }
+
+      // Calculate expiration time
+      const expiresIn = tokenData.expires_in || 3600; // Default to 1 hour if not provided
+      const expiresAt = Date.now() + (expiresIn * 1000);
+
+      const refreshedToken: GHLOAuthToken = {
+        locationId,
+        accessToken: tokenData.access_token,
+        refreshToken: tokenData.refresh_token || refreshToken, // Use new refresh token if provided, otherwise keep old one
+        expiresAt,
+        tokenType: tokenData.token_type || 'Bearer',
+        scope: tokenData.scope,
+        userId: tokenData.userId || tokenData.user_id,
+        companyId: tokenData.companyId || tokenData.company_id,
+        installedAt: existingToken?.installedAt || new Date(), // Preserve original installed_at from existing token
+      };
+
+      // Store the refreshed token
+      await storeGHLOAuthToken(refreshedToken);
+
+      console.log('[GHL API] ✅ Token refreshed successfully');
+      console.log('[GHL API] New token expires at:', new Date(expiresAt).toISOString());
+
+      return refreshedToken;
+    } catch (error) {
+      console.error('[GHL API] Error refreshing OAuth token:', error);
+      return null;
+    }
+  }
+
+  /**
    * Get OAuth access token for a location (preferred for marketplace apps)
+   * Automatically refreshes expired tokens if refresh token is available
    */
   async getOAuthToken(locationId?: string): Promise<string | null> {
     try {
@@ -97,31 +177,67 @@ export class GHLAPI {
         console.log('[GHL API] ✅ Token appears to be valid JWT format');
       }
       
-      // Check expiration (informational only - we'll still try to use it)
+      // Check expiration and refresh if needed (refresh 5 minutes before expiration to avoid issues)
       if (oauthToken.expiresAt) {
         const expiresAt = typeof oauthToken.expiresAt === 'string' 
           ? parseInt(oauthToken.expiresAt) 
           : oauthToken.expiresAt;
-        const isExpired = Date.now() >= expiresAt;
-        if (isExpired) {
-          console.warn('[GHL API] ⚠️  Token appears to be expired:', {
-            expiresAt: new Date(expiresAt).toISOString(),
-            now: new Date().toISOString(),
-            hasRefreshToken: !!oauthToken.refreshToken,
-          });
-          console.warn('[GHL API] Will attempt to use token anyway - GHL API will reject if truly expired');
+        const now = Date.now();
+        const timeUntilExpiry = expiresAt - now;
+        const fiveMinutes = 5 * 60 * 1000; // 5 minutes in milliseconds
+        const isExpired = now >= expiresAt;
+        const shouldRefresh = isExpired || timeUntilExpiry < fiveMinutes;
+        
+        if (shouldRefresh) {
+          if (isExpired) {
+            console.warn('[GHL API] ⚠️  Token is expired:', {
+              expiresAt: new Date(expiresAt).toISOString(),
+              now: new Date(now).toISOString(),
+              hasRefreshToken: !!oauthToken.refreshToken,
+            });
+          } else {
+            console.warn('[GHL API] ⚠️  Token expires soon (refreshing proactively):', {
+              expiresAt: new Date(expiresAt).toISOString(),
+              now: new Date(now).toISOString(),
+              timeUntilExpiry: `${Math.round(timeUntilExpiry / 1000 / 60)} minutes`,
+              hasRefreshToken: !!oauthToken.refreshToken,
+            });
+          }
+          
+          // Attempt to refresh the token
+          if (oauthToken.refreshToken) {
+            console.log('[GHL API] Attempting to refresh token...');
+            const refreshedToken = await this.refreshOAuthToken(locationId, oauthToken.refreshToken);
+            
+            if (refreshedToken?.accessToken) {
+              console.log('[GHL API] ✅ Token refreshed successfully, using new token');
+              return refreshedToken.accessToken;
+            } else {
+              if (isExpired) {
+                console.error('[GHL API] ❌ Token refresh failed. Token is expired and cannot be refreshed.');
+                console.error('[GHL API] User needs to reinstall the app via OAuth.');
+                // Still try to use the expired token - GHL API will reject it with 401
+                return oauthToken.accessToken;
+              } else {
+                // Token not expired yet, refresh failed but we can still use current token
+                console.warn('[GHL API] ⚠️  Token refresh failed, but token is not expired yet. Using current token.');
+                return oauthToken.accessToken;
+              }
+            }
+          } else {
+            if (isExpired) {
+              console.error('[GHL API] ❌ Token is expired and no refresh token available.');
+              console.error('[GHL API] User needs to reinstall the app via OAuth.');
+              // Still try to use the expired token - GHL API will reject it with 401
+              return oauthToken.accessToken;
+            } else {
+              // Token not expired yet, no refresh token but we can still use current token
+              console.warn('[GHL API] ⚠️  No refresh token available, but token is not expired yet. Using current token.');
+              return oauthToken.accessToken;
+            }
+          }
         } else {
-          console.log('[GHL API] ✅ Token is not expired');
-        }
-      }
-      
-      // TODO: Implement token refresh when refreshToken is available
-      if (oauthToken.refreshToken && oauthToken.expiresAt) {
-        const expiresAt = typeof oauthToken.expiresAt === 'string' 
-          ? parseInt(oauthToken.expiresAt) 
-          : oauthToken.expiresAt;
-        if (Date.now() >= expiresAt) {
-          console.log('[GHL API] Token has refresh token available (refresh not yet implemented, but will try using token anyway)');
+          console.log('[GHL API] ✅ Token is valid and not expiring soon');
         }
       }
       
