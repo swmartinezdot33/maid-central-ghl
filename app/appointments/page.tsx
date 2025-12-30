@@ -109,9 +109,15 @@ export default function AppointmentsPage() {
   };
 
   const loadMaidCentralAppointments = async () => {
+    if (!ghlData?.locationId) {
+      console.warn('[Appointments] Cannot load Maid Central appointments without locationId');
+      setMcAppointments([]);
+      return;
+    }
+    
     try {
       setLoadingAppointments(true);
-      const response = await fetch('/api/maid-central/appointments');
+      const response = await fetch(`/api/maid-central/appointments?locationId=${ghlData.locationId}`);
       const data = await response.json();
       if (response.ok) {
         setMcAppointments(Array.isArray(data.appointments) ? data.appointments : []);

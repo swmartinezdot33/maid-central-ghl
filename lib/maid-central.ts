@@ -24,15 +24,18 @@ interface TokenResponse {
 export class MaidCentralAPI {
   private client: AxiosInstance;
   private credentials: MaidCentralCredentials | null = null;
+  private locationId?: string;
 
-  constructor() {
+  constructor(locationId?: string) {
     this.client = createAxiosInstance();
+    this.locationId = locationId;
   }
 
-  async authenticate(): Promise<string> {
-    const creds = await getMaidCentralCredentials();
+  async authenticate(locationId?: string): Promise<string> {
+    const locId = locationId || this.locationId;
+    const creds = await getMaidCentralCredentials(locId);
     if (!creds || !creds.username || !creds.password) {
-      throw new Error('Maid Central credentials not configured');
+      throw new Error('Maid Central credentials not configured' + (locId ? ` for location ${locId}` : ''));
     }
 
     // Check if we have a valid token
@@ -70,7 +73,7 @@ export class MaidCentralAPI {
         tokenExpiresAt: expiresAt,
       };
 
-      await storeMaidCentralCredentials(updatedCreds);
+      await storeMaidCentralCredentials(updatedCreds, locId);
       this.credentials = updatedCreds;
 
       return tokenData.access_token;
@@ -82,11 +85,12 @@ export class MaidCentralAPI {
     }
   }
 
-  async refreshToken(): Promise<string> {
-    const creds = await getMaidCentralCredentials();
+  async refreshToken(locationId?: string): Promise<string> {
+    const locId = locationId || this.locationId;
+    const creds = await getMaidCentralCredentials(locId);
     if (!creds || !creds.refreshToken) {
       // Fallback to password grant
-      return this.authenticate();
+      return this.authenticate(locId);
     }
 
     const params = new URLSearchParams({
@@ -119,16 +123,16 @@ export class MaidCentralAPI {
         tokenExpiresAt: expiresAt,
       };
 
-      await storeMaidCentralCredentials(updatedCreds);
+      await storeMaidCentralCredentials(updatedCreds, locId);
       return tokenData.access_token;
     } catch (error) {
       // If refresh fails, try password grant
-      return this.authenticate();
+      return this.authenticate(locId);
     }
   }
 
-  private async getAuthHeader(): Promise<string> {
-    const token = await this.authenticate();
+  private async getAuthHeader(locationId?: string): Promise<string> {
+    const token = await this.authenticate(locationId);
     return `Bearer ${token}`;
   }
 
@@ -165,8 +169,8 @@ export class MaidCentralAPI {
 
   // Get a Lead (includes quote and booking information)
   // Reference: https://support.maidcentral.com/apidocs/gets-a-lead-3
-  async getLead(leadId: string | number): Promise<any> {
-    const token = await this.getAuthHeader();
+  async getLead(leadId: string | number, locationId?: string): Promise<any> {
+    const token = await this.getAuthHeader(locationId);
     const url = `${MAID_CENTRAL_API_BASE_URL}/api/Lead/Lead?leadId=${leadId}`;
     
     try {
@@ -313,8 +317,8 @@ export class MaidCentralAPI {
   // - https://support.maidcentral.com/apidocs/online-booking-to-api-workflow
   // - https://support.maidcentral.com/apidocs/one-page-maidcentral-api-workflow
 
-  async getAppointments(filters?: { startDate?: string; endDate?: string; status?: string; leadId?: string | number }): Promise<any[]> {
-    const token = await this.getAuthHeader();
+  async getAppointments(filters?: { startDate?: string; endDate?: string; status?: string; leadId?: string | number }, locationId?: string): Promise<any[]> {
+    const token = await this.getAuthHeader(locationId);
     
     // Try multiple endpoint patterns since exact endpoint structure needs verification
     const endpoints = [
@@ -385,8 +389,8 @@ export class MaidCentralAPI {
     return [];
   }
 
-  async getAppointment(appointmentId: string | number): Promise<any> {
-    const token = await this.getAuthHeader();
+  async getAppointment(appointmentId: string | number, locationId?: string): Promise<any> {
+    const token = await this.getAuthHeader(locationId);
     
     // Try multiple endpoint patterns
     const endpoints = [

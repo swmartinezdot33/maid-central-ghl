@@ -308,7 +308,7 @@ export async function syncAllAppointments(locationId?: string): Promise<{ synced
     const startDateStr = startDate.toISOString().split('T')[0];
 
     const [mcAppointments, ghlAppointments] = await Promise.all([
-      maidCentralAPI.getAppointments({ startDate: startDateStr }),
+      maidCentralAPI.getAppointments({ startDate: startDateStr }, locationId),
       ghlAPI.getCalendarAppointments(config.ghlCalendarId, config.ghlLocationId, { startDate: startDateStr }),
     ]);
 

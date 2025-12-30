@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const appointment = await maidCentralAPI.getAppointment(appointmentId);
+      const appointment = await maidCentralAPI.getAppointment(appointmentId, locationId);
       const result = await syncMaidCentralToGHL(appointment, locationId);
       
       return NextResponse.json(result);
