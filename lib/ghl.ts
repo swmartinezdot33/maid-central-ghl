@@ -82,11 +82,42 @@ export class GHLAPI {
         return null;
       }
       
-      // Don't check expiration - if token exists, use it
-      // If it's actually expired, the API call will return 401 and we'll handle it gracefully
+      // Validate token format (should be a JWT with 3 parts separated by dots)
+      const tokenParts = oauthToken.accessToken.split('.');
+      if (tokenParts.length !== 3) {
+        console.error('[GHL API] ⚠️  Token does not appear to be a valid JWT format. Expected 3 parts separated by dots, got:', tokenParts.length);
+        console.error('[GHL API] Token preview:', oauthToken.accessToken.substring(0, 50) + '...');
+        // Still return it - let GHL API reject it if it's invalid
+      } else {
+        console.log('[GHL API] ✅ Token appears to be valid JWT format');
+      }
+      
+      // Check expiration (informational only - we'll still try to use it)
+      if (oauthToken.expiresAt) {
+        const expiresAt = typeof oauthToken.expiresAt === 'string' 
+          ? parseInt(oauthToken.expiresAt) 
+          : oauthToken.expiresAt;
+        const isExpired = Date.now() >= expiresAt;
+        if (isExpired) {
+          console.warn('[GHL API] ⚠️  Token appears to be expired:', {
+            expiresAt: new Date(expiresAt).toISOString(),
+            now: new Date().toISOString(),
+            hasRefreshToken: !!oauthToken.refreshToken,
+          });
+          console.warn('[GHL API] Will attempt to use token anyway - GHL API will reject if truly expired');
+        } else {
+          console.log('[GHL API] ✅ Token is not expired');
+        }
+      }
+      
       // TODO: Implement token refresh when refreshToken is available
-      if (oauthToken.refreshToken && oauthToken.expiresAt && Date.now() >= oauthToken.expiresAt) {
-        console.log('[GHL API] Token has refresh token available (refresh not yet implemented, but will try using token anyway)');
+      if (oauthToken.refreshToken && oauthToken.expiresAt) {
+        const expiresAt = typeof oauthToken.expiresAt === 'string' 
+          ? parseInt(oauthToken.expiresAt) 
+          : oauthToken.expiresAt;
+        if (Date.now() >= expiresAt) {
+          console.log('[GHL API] Token has refresh token available (refresh not yet implemented, but will try using token anyway)');
+        }
       }
       
       return oauthToken.accessToken;
@@ -116,7 +147,13 @@ export class GHLAPI {
     }
     
     // Log token details for debugging (without exposing the full token)
-    console.log('[GHL API] Using OAuth token for locationId:', locationId, 'Token length:', oauthToken.length);
+    console.log('[GHL API] Using OAuth token for locationId:', locationId);
+    console.log('[GHL API] Token details:', {
+      tokenLength: oauthToken.length,
+      tokenPrefix: oauthToken.substring(0, 20) + '...',
+      tokenSuffix: '...' + oauthToken.substring(oauthToken.length - 10),
+      looksLikeJWT: oauthToken.includes('.') && oauthToken.split('.').length === 3,
+    });
     
     return oauthToken;
   }
@@ -669,6 +706,12 @@ export class GHLAPI {
     for (const endpoint of endpoints) {
       try {
         console.log(`[GHL API] Trying endpoint: ${endpoint.description}`);
+        console.log('[GHL API] Request details:', {
+          url: endpoint.url,
+          locationId: endpoint.params?.locationId,
+          tokenPrefix: token.substring(0, 20) + '...',
+          authorizationHeader: `Bearer ${token.substring(0, 20)}...`,
+        });
         const response = await this.client.get(endpoint.url, {
           headers: {
             Authorization: `Bearer ${token}`,
