@@ -26,19 +26,20 @@ export async function GET(request: NextRequest) {
   authUrl.searchParams.set('redirect_uri', redirectUri);
   authUrl.searchParams.set('version_id', versionId);
   // GHL expects scopes joined with + signs, not spaces
+  // GHL uses .read/.write format, not .readonly/.write
   const scopes = [
-    'locations.readonly',
-    'contacts.readonly',
+    'locations.read',
+    'contacts.read',
     'contacts.write',
-    'calendars.readonly',
+    'calendars.read',
     'calendars.write',
-    'calendars/events.readonly',
+    'calendars/events.read',
     'calendars/events.write',
-    'calendars/groups.readonly',
+    'calendars/groups.read',
     'calendars/resources.write',
     'calendars/groups.write',
-    'calendars/resources.readonly',
-    'opportunities.readonly',
+    'calendars/resources.read',
+    'opportunities.read',
     'opportunities.write'
   ].join('+'); // Use + instead of space to match GHL format
   authUrl.searchParams.set('scope', scopes);
