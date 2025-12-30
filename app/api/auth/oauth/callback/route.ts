@@ -182,13 +182,34 @@ export async function GET(request: NextRequest) {
 
     console.log('[OAuth Callback] ✅ Using locationId:', finalLocationId);
 
+    // Validate access token format (should be a JWT)
+    const accessToken = tokenData.access_token;
+    if (!accessToken) {
+      console.error('[OAuth Callback] ❌ No access_token in token response');
+      const errorUrl = new URL('/oauth-success', process.env.APP_BASE_URL || 'http://localhost:3001');
+      errorUrl.searchParams.set('error', 'no_access_token: GHL did not return an access token');
+      return NextResponse.redirect(errorUrl.toString());
+    }
+
+    // Check if token is a valid JWT format (3 parts separated by dots)
+    const tokenParts = accessToken.split('.');
+    if (tokenParts.length !== 3) {
+      console.error('[OAuth Callback] ❌ Access token is not a valid JWT format. Expected 3 parts, got:', tokenParts.length);
+      console.error('[OAuth Callback] Token preview:', accessToken.substring(0, 50) + '...');
+      const errorUrl = new URL('/oauth-success', process.env.APP_BASE_URL || 'http://localhost:3001');
+      errorUrl.searchParams.set('error', `invalid_token_format: Token is not a valid JWT (got ${tokenParts.length} parts, expected 3)`);
+      return NextResponse.redirect(errorUrl.toString());
+    }
+
+    console.log('[OAuth Callback] ✅ Access token is valid JWT format');
+
     // Note: We don't use returnUrl anymore because OAuth is always installed via marketplace or direct link
     // The callback will redirect to the setup page to complete configuration
 
     // Store OAuth token
     const oauthToken: GHLOAuthToken = {
       locationId: finalLocationId,
-      accessToken: tokenData.access_token,
+      accessToken: accessToken,
       refreshToken: tokenData.refresh_token,
       expiresAt: tokenData.expires_in ? Date.now() + (tokenData.expires_in * 1000) : undefined,
       tokenType: tokenData.token_type || 'Bearer',
@@ -203,6 +224,8 @@ export async function GET(request: NextRequest) {
       locationId: oauthToken.locationId,
       hasAccessToken: !!oauthToken.accessToken,
       accessTokenLength: oauthToken.accessToken?.length,
+      accessTokenPrefix: oauthToken.accessToken?.substring(0, 20) + '...',
+      isJWT: tokenParts.length === 3,
       hasRefreshToken: !!oauthToken.refreshToken,
       expiresAt: oauthToken.expiresAt ? new Date(oauthToken.expiresAt).toISOString() : 'never',
       tokenType: oauthToken.tokenType,

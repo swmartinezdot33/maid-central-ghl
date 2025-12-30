@@ -252,18 +252,59 @@ function SetupPageContent() {
           </div>
         )}
         
-        <button 
-          type="button" 
-          onClick={handleOAuthInstall}
-          className="btn"
-          style={{ 
-            backgroundColor: oauthStatus?.installed ? '#6c757d' : '#007bff',
-            color: 'white',
-            marginBottom: '1rem'
-          }}
-        >
-          {oauthStatus?.installed ? 'Reinstall App' : 'Install via OAuth'}
-        </button>
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+          <button 
+            type="button" 
+            onClick={handleOAuthInstall}
+            className="btn"
+            style={{ 
+              backgroundColor: oauthStatus?.installed ? '#6c757d' : '#007bff',
+              color: 'white',
+            }}
+          >
+            {oauthStatus?.installed ? 'Reinstall App' : 'Install via OAuth'}
+          </button>
+          
+          {oauthStatus?.installed && (
+            <button
+              type="button"
+              onClick={async () => {
+                if (!ghlData?.locationId) {
+                  setMessage({ type: 'error', text: 'Location ID is required' });
+                  return;
+                }
+                
+                if (!confirm('Are you sure you want to clear the OAuth token? You will need to reinstall the app.')) {
+                  return;
+                }
+                
+                try {
+                  const response = await fetch(`/api/auth/oauth/clear?locationId=${ghlData.locationId}`, {
+                    method: 'DELETE',
+                  });
+                  
+                  const data = await response.json();
+                  
+                  if (response.ok) {
+                    setMessage({ type: 'success', text: 'OAuth token cleared. Please reinstall the app.' });
+                    await fetchOAuthStatus();
+                  } else {
+                    setMessage({ type: 'error', text: data.error || 'Failed to clear token' });
+                  }
+                } catch (error) {
+                  setMessage({ type: 'error', text: 'Failed to clear token' });
+                }
+              }}
+              className="btn"
+              style={{ 
+                backgroundColor: '#dc3545',
+                color: 'white',
+              }}
+            >
+              Clear Token
+            </button>
+          )}
+        </div>
         
         {ghlData?.locationId && (
           <p style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: '#666' }}>
