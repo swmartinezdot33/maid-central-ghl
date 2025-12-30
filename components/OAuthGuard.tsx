@@ -3,6 +3,10 @@
 import { useEffect, useState } from 'react';
 import { useGHLIframe } from '@/lib/ghl-iframe-context';
 import Link from 'next/link';
+import { LoadingSpinner } from './ui/LoadingSpinner';
+import { Alert } from './ui/Alert';
+import { Button } from './ui/Button';
+import { Card } from './ui/Card';
 
 interface OAuthGuardProps {
   children: React.ReactNode;
@@ -38,28 +42,13 @@ export function OAuthGuard({ children, fallback }: OAuthGuardProps) {
       const data = await response.json();
       console.log('[OAuthGuard] OAuth status response:', data);
       
-      // Check if OAuth is installed - use installed field from API (which checks for accessToken)
-      // The API returns installed: true if there's a valid accessToken
       const isInstalled = data.installed === true;
       const isExpired = data.isExpired === true;
       const tokenActuallyWorks = data.tokenActuallyWorks === true;
       
-      console.log('[OAuthGuard] OAuth status check:', { 
-        isInstalled, 
-        isExpired,
-        tokenActuallyWorks,
-        apiInstalled: data.installed,
-        apiHasToken: data.hasToken,
-        apiIsExpired: data.isExpired,
-        apiTokenActuallyWorks: data.tokenActuallyWorks,
-        locationId: data.locationId,
-        fullResponse: data
-      });
-      
       setOauthStatus({
         installed: isInstalled,
-        // If token exists in DB, it's never expired - just show the app
-        isExpired: false, // Always false - if token exists, show the app
+        isExpired: false,
         tokenActuallyWorks,
       });
     } catch (error) {
@@ -72,11 +61,12 @@ export function OAuthGuard({ children, fallback }: OAuthGuardProps) {
 
   if (loading || iframeLoading) {
     return (
-      <div className="container">
-        <div className="header">
-          <h1>Loading...</h1>
-          <p>Checking OAuth installation status...</p>
-        </div>
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <Card className="p-8 text-center">
+          <LoadingSpinner size="lg" className="mx-auto mb-4" />
+          <h2 className="text-lg font-semibold text-gray-900 mb-2">Loading...</h2>
+          <p className="text-sm text-gray-500">Checking OAuth installation status...</p>
+        </Card>
       </div>
     );
   }
@@ -84,16 +74,14 @@ export function OAuthGuard({ children, fallback }: OAuthGuardProps) {
   if (!ghlData?.locationId) {
     return (
       fallback || (
-        <div className="container">
-          <div className="header">
-            <h1>Location Context Required</h1>
-            <div className="alert alert-error" style={{ marginTop: '1rem' }}>
-              <strong>Unable to load location information</strong>
-              <p style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}>
+        <div className="flex items-center justify-center min-h-screen bg-gray-50 p-4">
+          <Card className="max-w-md w-full">
+            <Alert variant="error" title="Location Context Required">
+              <p className="mb-4">
                 This app must be loaded within a GoHighLevel iframe to access location-specific data.
               </p>
-            </div>
-          </div>
+            </Alert>
+          </Card>
         </div>
       )
     );
@@ -102,51 +90,43 @@ export function OAuthGuard({ children, fallback }: OAuthGuardProps) {
   if (!oauthStatus?.installed) {
     return (
       fallback || (
-        <div className="container">
-          <div className="header">
-            <h1>OAuth Installation Required</h1>
-            <div className="alert alert-error" style={{ marginTop: '1rem' }}>
-              <strong>OAuth not installed for this location</strong>
-              <p style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}>
+        <div className="flex items-center justify-center min-h-screen bg-gray-50 p-4">
+          <Card className="max-w-md w-full">
+            <Alert variant="error" title="OAuth Installation Required">
+              <p className="mb-4">
                 This app requires OAuth installation before it can access location data. Please install the app via OAuth first.
               </p>
-              <p style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: '#666' }}>
+              <p className="text-sm text-gray-600 mb-4">
                 Location ID: {ghlData.locationId}
               </p>
-              <div style={{ marginTop: '1rem' }}>
-                <Link href="/setup" className="btn btn-primary">
+              <Link href="/setup">
+                <Button variant="primary" className="w-full">
                   Go to Setup & Install OAuth
-                </Link>
-              </div>
-            </div>
-          </div>
+                </Button>
+              </Link>
+            </Alert>
+          </Card>
         </div>
       )
     );
   }
 
-  // Only show expired message if:
-  // - Token test failed (tokenActuallyWorks === false), OR
-  // - Token test wasn't run and timestamp says expired
-  // If tokenActuallyWorks is true, the token is valid regardless of timestamp
   if (oauthStatus.isExpired) {
     return (
       fallback || (
-        <div className="container">
-          <div className="header">
-            <h1>OAuth Token Expired</h1>
-            <div className="alert alert-warning" style={{ marginTop: '1rem' }}>
-              <strong>OAuth token has expired</strong>
-              <p style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}>
+        <div className="flex items-center justify-center min-h-screen bg-gray-50 p-4">
+          <Card className="max-w-md w-full">
+            <Alert variant="warning" title="OAuth Token Expired">
+              <p className="mb-4">
                 Please reinstall the app via OAuth to refresh the token.
               </p>
-              <div style={{ marginTop: '1rem' }}>
-                <Link href="/setup" className="btn btn-primary">
+              <Link href="/setup">
+                <Button variant="primary" className="w-full">
                   Reinstall OAuth
-                </Link>
-              </div>
-            </div>
-          </div>
+                </Button>
+              </Link>
+            </Alert>
+          </Card>
         </div>
       )
     );
@@ -154,4 +134,3 @@ export function OAuthGuard({ children, fallback }: OAuthGuardProps) {
 
   return <>{children}</>;
 }
-

@@ -2,6 +2,18 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useGHLIframe } from '@/lib/ghl-iframe-context';
+import { LocationGuard } from '@/components/LocationGuard';
+import { Card } from '@/components/ui/Card';
+import { Toggle } from '@/components/ui/Toggle';
+import { Input } from '@/components/ui/Input';
+import { Select } from '@/components/ui/Select';
+import { Button } from '@/components/ui/Button';
+import { Alert } from '@/components/ui/Alert';
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { Badge } from '@/components/ui/Badge';
+import { ArrowLeftIcon, PlusIcon, TrashIcon, ArrowRightIcon } from '@heroicons/react/24/outline';
 
 interface Field {
   name: string;
@@ -26,6 +38,7 @@ interface Config {
 
 export default function MappingPage() {
   const router = useRouter();
+  const { ghlData } = useGHLIframe();
   const [mcFields, setMcFields] = useState<Field[]>([]);
   const [ghlFields, setGhlFields] = useState<Field[]>([]);
   const [mappings, setMappings] = useState<FieldMapping[]>([]);
@@ -40,13 +53,13 @@ export default function MappingPage() {
 
   const loadData = async () => {
     try {
-      // Load configuration
-      const configRes = await fetch('/api/config');
+      const locationId = ghlData?.locationId;
+      const configUrl = locationId ? `/api/config?locationId=${locationId}` : '/api/config';
+      const configRes = await fetch(configUrl);
       const configData = await configRes.json();
       setConfig(configData.config);
       setMappings(configData.config?.fieldMappings || []);
 
-      // Load Maid Central fields
       try {
         const mcRes = await fetch('/api/maid-central/fields');
         const mcData = await mcRes.json();
@@ -60,22 +73,16 @@ export default function MappingPage() {
         setMessage({ type: 'error', text: 'Failed to load Maid Central fields. Please ensure credentials are configured.' });
       }
 
-      // Load GHL fields (requires location ID)
-      const locationIdToUse = configData.config?.ghlLocationId;
+      const locationIdToUse = configData.config?.ghlLocationId || locationId;
       if (locationIdToUse) {
         try {
-          console.log('Loading GHL fields for location:', locationIdToUse);
           const ghlRes = await fetch(`/api/ghl/fields?locationId=${locationIdToUse}`);
-          console.log('GHL fields API response status:', ghlRes.status);
-          
           if (!ghlRes.ok) {
             const errorData = await ghlRes.json().catch(() => ({}));
             throw new Error(errorData.error || `HTTP ${ghlRes.status}: ${ghlRes.statusText}`);
           }
           
           const ghlData = await ghlRes.json();
-          console.log('GHL fields API response:', ghlData);
-          
           if (ghlData.error) {
             throw new Error(ghlData.error);
           }
@@ -84,61 +91,7 @@ export default function MappingPage() {
             throw new Error('Invalid response format from GHL fields API');
           }
           
-          console.log('GHL fields loaded successfully:', ghlData.fields.length);
           setGhlFields(ghlData.fields);
-        } catch (error) {
-          console.error('Error loading GHL fields:', error);
-          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-          setMessage({ type: 'error', text: `Failed to load GoHighLevel fields: ${errorMsg}` });
-        }
-      } else {
-        // Try to get locations first
-        try {
-          console.log('No location ID in config, fetching locations...');
-          const locationsRes = await fetch('/api/ghl/locations');
-          console.log('Locations API response status:', locationsRes.status);
-          
-          if (!locationsRes.ok) {
-            const errorData = await locationsRes.json().catch(() => ({}));
-            throw new Error(errorData.error || `HTTP ${locationsRes.status}: ${locationsRes.statusText}`);
-          }
-          
-          const locationsData = await locationsRes.json();
-          console.log('Locations API response:', locationsData);
-          
-          if (locationsData.error) {
-            throw new Error(locationsData.error);
-          }
-          
-          if (locationsData.locations?.length > 0) {
-            const firstLocation = locationsData.locations[0];
-            const locationId = firstLocation.id || firstLocation.locationId || firstLocation.name;
-            console.log('Using location:', locationId);
-            
-            const ghlRes = await fetch(`/api/ghl/fields?locationId=${locationId}`);
-            console.log('GHL fields API response status:', ghlRes.status);
-            
-            if (!ghlRes.ok) {
-              const errorData = await ghlRes.json().catch(() => ({}));
-              throw new Error(errorData.error || `HTTP ${ghlRes.status}: ${ghlRes.statusText}`);
-            }
-            
-            const ghlData = await ghlRes.json();
-            console.log('GHL fields API response:', ghlData);
-            
-            if (ghlData.error) {
-              throw new Error(ghlData.error);
-            }
-            
-            if (!ghlData.fields || !Array.isArray(ghlData.fields)) {
-              throw new Error('Invalid response format from GHL fields API');
-            }
-            
-            console.log('GHL fields loaded successfully:', ghlData.fields.length);
-            setGhlFields(ghlData.fields);
-          } else {
-            setMessage({ type: 'error', text: 'No GoHighLevel locations found. Please configure your GHL token.' });
-          }
         } catch (error) {
           console.error('Error loading GHL fields:', error);
           const errorMsg = error instanceof Error ? error.message : 'Unknown error';
@@ -161,7 +114,6 @@ export default function MappingPage() {
     const updated = [...mappings];
     updated[index] = { ...updated[index], [field]: value };
     
-    // Update labels when field names change
     if (field === 'maidCentralField') {
       const mcField = mcFields.find(f => f.name === value);
       updated[index].maidCentralLabel = mcField?.label;
@@ -182,7 +134,6 @@ export default function MappingPage() {
     setSaving(true);
     setMessage(null);
 
-    // Filter out incomplete mappings
     const validMappings = mappings.filter(m => m.maidCentralField && m.ghlField);
 
     try {
@@ -193,7 +144,6 @@ export default function MappingPage() {
       });
 
       if (response.ok) {
-        // Also save the tag configuration
         const configResponse = await fetch('/api/config', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -243,150 +193,169 @@ export default function MappingPage() {
 
   if (loading) {
     return (
-      <div className="container">
-        <div className="header">
-          <h1>Field Mapping</h1>
-          <p>Loading...</p>
+      <LocationGuard>
+        <div className="max-w-6xl mx-auto space-y-6">
+          <Skeleton className="h-12 w-64" />
+          <Card padding="lg">
+            <Skeleton className="h-6 w-48 mb-4" />
+            <Skeleton className="h-20 w-full" />
+          </Card>
         </div>
-      </div>
+      </LocationGuard>
     );
   }
 
   return (
-    <div className="container">
-      <div className="header">
-        <h1>Field Mapping</h1>
-        <p>Map Maid Central quote fields to GoHighLevel contact fields</p>
-      </div>
-
-      {message && (
-        <div className={`alert alert-${message.type}`}>
-          {message.text}
+    <LocationGuard>
+      <div className="max-w-6xl mx-auto space-y-6">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" onClick={() => router.push('/')} className="p-2">
+            <ArrowLeftIcon className="w-5 h-5" />
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Field Mapping</h1>
+            <p className="text-gray-600 mt-1">Map Maid Central quote fields to GoHighLevel contact fields</p>
+          </div>
         </div>
-      )}
 
-      <div className="section">
-        <div className="flex-between mb-2">
-          <h2 className="section-title">Integration Toggle</h2>
-          <label className="toggle-switch">
-            <input
-              type="checkbox"
-              checked={config?.enabled || false}
-              onChange={(e) => toggleIntegration(e.target.checked)}
-            />
-            <span className="toggle-slider"></span>
-          </label>
-        </div>
-        <p style={{ color: '#666', fontSize: '0.9rem' }}>
-                  {config?.enabled ? 'Integration is enabled and ready to sync quotes manually.' : 'Integration is disabled.'}
-        </p>
-      </div>
+        {message && (
+          <Alert
+            variant={message.type === 'error' ? 'error' : 'success'}
+            onClose={() => setMessage(null)}
+          >
+            {message.text}
+          </Alert>
+        )}
 
-      <div className="section">
-        <h2 className="section-title">GHL Tag Configuration</h2>
-        <p style={{ marginBottom: '1rem', color: '#666', fontSize: '0.9rem' }}>
-          When a new quote is synced, this tag will be automatically added to the contact in GoHighLevel.
-        </p>
-        <div className="form-group" style={{ maxWidth: '400px' }}>
-          <label htmlFor="ghlTag">Tag Name</label>
-          <input
-            type="text"
-            id="ghlTag"
+        {/* Integration Toggle */}
+        <Card padding="lg">
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <Toggle
+                label="Enable Integration"
+                description={config?.enabled ? 'Integration is enabled and ready to sync quotes manually.' : 'Integration is disabled.'}
+                checked={config?.enabled || false}
+                onChange={(e) => toggleIntegration(e.target.checked)}
+              />
+            </div>
+            <Badge variant={config?.enabled ? 'success' : 'error'}>
+              {config?.enabled ? 'Enabled' : 'Disabled'}
+            </Badge>
+          </div>
+        </Card>
+
+        {/* Tag Configuration */}
+        <Card padding="lg">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">GHL Tag Configuration</h2>
+          <p className="text-sm text-gray-600 mb-4">
+            When a new quote is synced, this tag will be automatically added to the contact in GoHighLevel.
+          </p>
+          <Input
+            label="Tag Name"
             value={config?.ghlTag || ''}
             onChange={(e) => {
               const updatedConfig = { ...config, ghlTag: e.target.value };
               setConfig(updatedConfig as Config);
             }}
             placeholder="e.g., Maid Central Quote"
-            style={{ marginBottom: '0.5rem' }}
+            helperText="Leave empty to skip tagging. The tag will be created in GHL if it doesn't exist."
           />
-          <p style={{ fontSize: '0.85rem', color: '#666' }}>
-            Leave empty to skip tagging. The tag will be created in GHL if it doesn't exist.
-          </p>
-        </div>
-      </div>
+        </Card>
 
-      <div className="section">
-        <div className="flex-between mb-2">
-          <h2 className="section-title">Field Mappings</h2>
-          <button onClick={addMapping} className="btn btn-primary btn-small">
-            + Add Mapping
-          </button>
-        </div>
+        {/* Field Mappings */}
+        <Card padding="lg">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-semibold text-gray-900">Field Mappings</h2>
+            <Button onClick={addMapping} variant="primary" size="sm">
+              <PlusIcon className="w-4 h-4 mr-2" />
+              Add Mapping
+            </Button>
+          </div>
 
-        {mappings.length === 0 ? (
-          <p style={{ color: '#666', fontStyle: 'italic' }}>
-            No mappings configured. Click "Add Mapping" to create one.
-          </p>
-        ) : (
-          mappings.map((mapping, index) => (
-            <div key={index} className="mapping-row">
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', fontWeight: 500 }}>
-                  Maid Central Field
-                </label>
-                <select
-                  value={mapping.maidCentralField}
-                  onChange={(e) => updateMapping(index, 'maidCentralField', e.target.value)}
-                >
-                  <option value="">Select field...</option>
-                  {mcFields.map((field) => (
-                    <option key={field.name} value={field.name}>
-                      {field.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', fontWeight: 500 }}>
-                  GoHighLevel Field
-                </label>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <select
-                    value={mapping.ghlField}
-                    onChange={(e) => updateMapping(index, 'ghlField', e.target.value)}
-                    style={{ flex: 1 }}
-                  >
-                    <option value="">Select field...</option>
-                    {ghlFields.map((field) => (
-                      <option key={field.name} value={field.name}>
-                        {field.label} 
-                        {field.category === 'opportunity' ? ' (Opportunity)' : ''}
-                        {field.category === 'object' ? ' (Object)' : ''}
-                        {field.category === 'contact' && field.type !== 'standard' ? ' (Contact Custom)' : ''}
-                        {field.type === 'standard' ? ' (Standard)' : ''}
-                      </option>
-                    ))}
-                  </select>
-                  {mappings.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => removeMapping(index)}
-                      className="btn-remove"
-                    >
-                      Remove
-                    </button>
-                  )}
-                </div>
-              </div>
+          {mappings.length === 0 ? (
+            <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-lg">
+              <p className="text-gray-500 mb-4">No mappings configured</p>
+              <Button onClick={addMapping} variant="secondary">
+                <PlusIcon className="w-4 h-4 mr-2" />
+                Add Your First Mapping
+              </Button>
             </div>
-          ))
-        )}
+          ) : (
+            <div className="space-y-4">
+              {mappings.map((mapping, index) => (
+                <Card key={index} padding="md" className="bg-gray-50">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Maid Central Field
+                      </label>
+                      <Select
+                        options={[
+                          { value: '', label: 'Select field...' },
+                          ...mcFields.map(field => ({ value: field.name, label: field.label }))
+                        ]}
+                        value={mapping.maidCentralField}
+                        onChange={(e) => updateMapping(index, 'maidCentralField', e.target.value)}
+                      />
+                    </div>
 
-        <div className="mt-2">
-          <button onClick={saveMappings} className="btn btn-primary" disabled={saving}>
-            {saving ? 'Saving...' : 'Save Mappings'}
-          </button>
-        </div>
-      </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        GoHighLevel Field
+                      </label>
+                      <div className="flex gap-2">
+                        <Select
+                          options={[
+                            { value: '', label: 'Select field...' },
+                            ...ghlFields.map(field => ({
+                              value: field.name,
+                              label: `${field.label}${field.category === 'opportunity' ? ' (Opportunity)' : ''}${field.category === 'object' ? ' (Object)' : ''}${field.category === 'contact' && field.type !== 'standard' ? ' (Contact Custom)' : ''}${field.type === 'standard' ? ' (Standard)' : ''}`
+                            }))
+                          ]}
+                          value={mapping.ghlField}
+                          onChange={(e) => updateMapping(index, 'ghlField', e.target.value)}
+                          className="flex-1"
+                        />
+                        {mappings.length > 1 && (
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            onClick={() => removeMapping(index)}
+                            className="px-3"
+                          >
+                            <TrashIcon className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
 
-      <div className="section">
-        <button onClick={() => router.push('/')} className="btn" style={{ backgroundColor: '#e0e0e0' }}>
-          ← Back to Home
-        </button>
+          {mappings.length > 0 && (
+            <div className="mt-6">
+              <Button 
+                onClick={saveMappings} 
+                variant="primary" 
+                disabled={saving}
+                className="w-full"
+                size="lg"
+              >
+                {saving ? (
+                  <>
+                    <LoadingSpinner size="sm" className="mr-2" />
+                    Saving...
+                  </>
+                ) : (
+                  'Save Mappings'
+                )}
+              </Button>
+            </div>
+          )}
+        </Card>
       </div>
-    </div>
+    </LocationGuard>
   );
 }
-

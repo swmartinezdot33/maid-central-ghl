@@ -1,6 +1,10 @@
 'use client';
 
 import { useGHLIframe } from '@/lib/ghl-iframe-context';
+import { LoadingSpinner } from './ui/LoadingSpinner';
+import { Alert } from './ui/Alert';
+import { Button } from './ui/Button';
+import { Card } from './ui/Card';
 
 interface LocationGuardProps {
   children: React.ReactNode;
@@ -16,11 +20,12 @@ export function LocationGuard({ children, fallback }: LocationGuardProps) {
 
   if (loading) {
     return (
-      <div className="container">
-        <div className="header">
-          <h1>Loading...</h1>
-          <p>Waiting for location context from GoHighLevel...</p>
-        </div>
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <Card className="p-8 text-center">
+          <LoadingSpinner size="lg" className="mx-auto mb-4" />
+          <h2 className="text-lg font-semibold text-gray-900 mb-2">Loading...</h2>
+          <p className="text-sm text-gray-500">Waiting for location context from GoHighLevel...</p>
+        </Card>
       </div>
     );
   }
@@ -28,19 +33,17 @@ export function LocationGuard({ children, fallback }: LocationGuardProps) {
   if (error || !ghlData?.locationId) {
     return (
       fallback || (
-        <div className="container">
-          <div className="header">
-            <h1>Location Context Required</h1>
-            <div className="alert alert-error" style={{ marginTop: '1rem' }}>
-              <strong>Unable to load location information</strong>
-              <p style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}>
+        <div className="flex items-center justify-center min-h-screen bg-gray-50 p-4">
+          <Card className="max-w-md w-full">
+            <Alert variant="error" title="Location Context Required">
+              <p className="mb-4">
                 {error || 'This app must be loaded within a GoHighLevel iframe to access location-specific data.'}
               </p>
-              <p style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: '#666' }}>
+              <p className="text-sm text-gray-600">
                 Please ensure you are accessing this app through the GoHighLevel marketplace app installation.
               </p>
-            </div>
-          </div>
+            </Alert>
+          </Card>
         </div>
       )
     );
@@ -48,4 +51,3 @@ export function LocationGuard({ children, fallback }: LocationGuardProps) {
 
   return <>{children}</>;
 }
-

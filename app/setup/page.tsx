@@ -4,6 +4,20 @@ import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useGHLIframe } from '@/lib/ghl-iframe-context';
 import { LocationGuard } from '@/components/LocationGuard';
+import { Card } from '@/components/ui/Card';
+import { Input } from '@/components/ui/Input';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
+import { Alert } from '@/components/ui/Alert';
+import { StatusIndicator } from '@/components/ui/StatusIndicator';
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import {
+  CheckCircleIcon,
+  XCircleIcon,
+  KeyIcon,
+  CloudIcon,
+  ArrowLeftIcon,
+} from '@heroicons/react/24/outline';
 
 interface CredentialsStatus {
   credentials: {
@@ -13,11 +27,9 @@ interface CredentialsStatus {
   } | null;
 }
 
-// Utility function to mask credentials (show first 4 and last 4 characters)
 function maskCredential(value: string): string {
   if (!value) return '';
   if (value.length <= 8) {
-    // If value is 8 chars or less, just show stars (don't reveal anything)
     return '*'.repeat(value.length);
   }
   const first4 = value.substring(0, 4);
@@ -45,7 +57,6 @@ function SetupPageContent() {
     fetchCredentials();
     fetchOAuthStatus();
     
-    // Check for OAuth success/error messages
     const success = searchParams.get('success');
     const error = searchParams.get('error');
     if (success === 'oauth_installed') {
@@ -80,7 +91,6 @@ function SetupPageContent() {
   const fetchOAuthStatus = async () => {
     try {
       setLoadingOAuth(true);
-      // Use locationId from iframe context if available
       const locationId = ghlData?.locationId || searchParams.get('locationId');
       if (!locationId) {
         setOauthStatus({ installed: false });
@@ -101,16 +111,12 @@ function SetupPageContent() {
 
   const handleOAuthInstall = () => {
     const locationId = ghlData?.locationId || searchParams.get('locationId');
-    
-    // Build OAuth authorize URL with locationId (optional hint)
-    // OAuth is always installed via marketplace or direct link, not from custom menu links
     const authUrl = new URL('/api/auth/oauth/authorize', window.location.origin);
     if (locationId) {
       authUrl.searchParams.set('locationId', locationId);
     }
     
     console.log('[Setup] Initiating OAuth installation for locationId:', locationId);
-    // Open in new tab so OAuth flow can complete properly (especially when in iframe)
     window.open(authUrl.toString(), '_blank');
   };
 
@@ -150,185 +156,209 @@ function SetupPageContent() {
     }
   };
 
-
   return (
     <LocationGuard>
-      <div className="container">
-      <div className="header">
-        <h1>Setup & Configuration</h1>
-        <p>Configure your Maid Central and GoHighLevel integrations</p>
-      </div>
-
-      {message && (
-        <div className={`alert alert-${message.type}`}>
-          {message.text}
-        </div>
-      )}
-
-      {/* Maid Central Credentials */}
-      <div className="section">
-        <h2 className="section-title">Maid Central API Credentials</h2>
-        <p style={{ marginBottom: '1rem', color: '#666', fontSize: '0.9rem' }}>
-          Get your API credentials from Maid Central: <strong>Company → Settings → General → Integrations Tab → API Users</strong>
-        </p>
-        
-        {mcCredentials?.credentials && (
-          <div className="mb-2">
-            <span className="status-badge success">Currently configured</span>
-            <p style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#666' }}>
-              Username: {maskCredential(mcCredentials.credentials.username)}
-            </p>
-            {mcCredentials.credentials.hasPassword && (
-              <p style={{ marginTop: '0.25rem', fontSize: '0.9rem', color: '#666' }}>
-                Password: ******** (configured)
-              </p>
-            )}
+      <div className="max-w-4xl mx-auto space-y-6">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" onClick={() => router.push('/')} className="p-2">
+            <ArrowLeftIcon className="w-5 h-5" />
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Setup & Configuration</h1>
+            <p className="text-gray-600 mt-1">Configure your Maid Central and GoHighLevel integrations</p>
           </div>
+        </div>
+
+        {message && (
+          <Alert
+            variant={message.type === 'error' ? 'error' : message.type === 'info' ? 'info' : 'success'}
+            onClose={() => setMessage(null)}
+          >
+            {message.text}
+          </Alert>
         )}
 
-        <form onSubmit={handleSaveCredentials}>
-          <div className="form-group">
-            <label htmlFor="username">API Username</label>
-            <input
+        {/* Maid Central Credentials */}
+        <Card padding="lg">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 bg-primary-100 rounded-lg">
+              <KeyIcon className="w-6 h-6 text-primary-600" />
+            </div>
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">Maid Central API Credentials</h2>
+              <p className="text-sm text-gray-500">Get your API credentials from Maid Central</p>
+            </div>
+          </div>
+          
+          <p className="text-sm text-gray-600 mb-6 bg-gray-50 p-4 rounded-lg">
+            <strong>Where to find:</strong> Company → Settings → General → Integrations Tab → API Users
+          </p>
+          
+          {mcCredentials?.credentials && (
+            <div className="mb-6 p-4 bg-success-50 border border-success-200 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-success-900 mb-1">Credentials Configured</p>
+                  <p className="text-xs text-success-700">
+                    Username: {maskCredential(mcCredentials.credentials.username)}
+                  </p>
+                  {mcCredentials.credentials.hasPassword && (
+                    <p className="text-xs text-success-700 mt-1">
+                      Password: ******** (configured)
+                    </p>
+                  )}
+                </div>
+                <Badge variant="success">Active</Badge>
+              </div>
+            </div>
+          )}
+
+          <form onSubmit={handleSaveCredentials} className="space-y-4">
+            <Input
+              label="API Username"
               type="text"
-              id="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
               placeholder="Enter your Maid Central API username"
             />
-          </div>
 
-          <div className="form-group">
-            <label htmlFor="password">API Password</label>
-            <input
+            <Input
+              label="API Password"
               type="password"
-              id="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
               placeholder="Enter your Maid Central API password"
             />
-          </div>
 
-          <button type="submit" className="btn btn-primary" disabled={saving}>
-            {saving ? 'Saving...' : 'Save Credentials'}
-          </button>
-        </form>
-      </div>
+            <Button type="submit" variant="primary" disabled={saving} className="w-full">
+              {saving ? (
+                <>
+                  <LoadingSpinner size="sm" className="mr-2" />
+                  Saving...
+                </>
+              ) : (
+                'Save Credentials'
+              )}
+            </Button>
+          </form>
+        </Card>
 
-      {/* GoHighLevel OAuth Installation (Marketplace App) */}
-      <div className="section">
-        <h2 className="section-title">GoHighLevel Marketplace App (OAuth)</h2>
-        <p style={{ marginBottom: '1rem', color: '#666', fontSize: '0.9rem' }}>
-          Install the app via OAuth for secure, per-location authentication. This is the recommended method for marketplace apps and enables user context features.
-        </p>
-        
-        {loadingOAuth ? (
-          <p>Checking installation status...</p>
-        ) : oauthStatus?.installed ? (
-          <div className="mb-2">
-            <span className="status-badge success">✓ App Installed</span>
-            {oauthStatus.locationId && (
-              <p style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#666' }}>
-                Location ID: {oauthStatus.locationId}
-              </p>
-            )}
-            {/* Only show expired warning if token actually fails, not just based on timestamp */}
-            {oauthStatus.isExpired && oauthStatus.tokenActuallyWorks === false && (
-              <p style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#856404' }}>
-                ⚠ Token expired. Please reinstall the app.
-              </p>
-            )}
+        {/* GoHighLevel OAuth */}
+        <Card padding="lg">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 bg-accent-100 rounded-lg">
+              <CloudIcon className="w-6 h-6 text-accent-600" />
+            </div>
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">GoHighLevel Marketplace App (OAuth)</h2>
+              <p className="text-sm text-gray-500">Install the app via OAuth for secure authentication</p>
+            </div>
           </div>
-        ) : (
-          <div className="mb-2">
-            <span className="status-badge" style={{ backgroundColor: '#ffc107', color: '#856404' }}>
-              App Not Installed
-            </span>
-            <p style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#666' }}>
-              Click below to install the app via OAuth for your location.
-            </p>
-          </div>
-        )}
-        
-        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-          <button 
-            type="button" 
-            onClick={handleOAuthInstall}
-            className="btn"
-            style={{ 
-              backgroundColor: oauthStatus?.installed ? '#6c757d' : '#007bff',
-              color: 'white',
-            }}
-          >
-            {oauthStatus?.installed ? 'Reinstall App' : 'Install via OAuth'}
-          </button>
           
-          {oauthStatus?.installed && (
-            <button
-              type="button"
-              onClick={async () => {
-                if (!ghlData?.locationId) {
-                  setMessage({ type: 'error', text: 'Location ID is required' });
-                  return;
-                }
-                
-                if (!confirm('Are you sure you want to clear the OAuth token? You will need to reinstall the app.')) {
-                  return;
-                }
-                
-                try {
-                  const response = await fetch(`/api/auth/oauth/clear?locationId=${ghlData.locationId}`, {
-                    method: 'DELETE',
-                  });
-                  
-                  const data = await response.json();
-                  
-                  if (response.ok) {
-                    setMessage({ type: 'success', text: 'OAuth token cleared. Please reinstall the app.' });
-                    await fetchOAuthStatus();
-                  } else {
-                    setMessage({ type: 'error', text: data.error || 'Failed to clear token' });
-                  }
-                } catch (error) {
-                  setMessage({ type: 'error', text: 'Failed to clear token' });
-                }
-              }}
-              className="btn"
-              style={{ 
-                backgroundColor: '#dc3545',
-                color: 'white',
-              }}
-            >
-              Clear Token
-            </button>
-          )}
-        </div>
-        
-                {ghlData?.locationId && (
-                  <div style={{ marginTop: '0.5rem' }}>
-                    <p style={{ fontSize: '0.85rem', color: '#666' }}>
-                      Current Location from iframe: <code style={{ backgroundColor: '#f0f0f0', padding: '2px 4px', borderRadius: '2px' }}>{ghlData.locationId}</code>
+          <p className="text-sm text-gray-600 mb-6 bg-gray-50 p-4 rounded-lg">
+            Install the app via OAuth for secure, per-location authentication. This is the recommended method for marketplace apps and enables user context features.
+          </p>
+          
+          {loadingOAuth ? (
+            <div className="flex items-center justify-center py-8">
+              <LoadingSpinner size="lg" />
+            </div>
+          ) : oauthStatus?.installed ? (
+            <div className="mb-6 p-4 bg-success-50 border border-success-200 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-success-900 mb-1">App Installed</p>
+                  {oauthStatus.locationId && (
+                    <p className="text-xs text-success-700">
+                      Location ID: {oauthStatus.locationId}
                     </p>
-                    <a 
-                      href={`/api/auth/oauth/diagnose?locationId=${ghlData.locationId}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ fontSize: '0.85rem', color: '#007bff', textDecoration: 'underline' }}
-                    >
-                      🔍 Diagnose Token Issues
-                    </a>
-                  </div>
-                )}
-      </div>
-
-
-      <div className="section">
-        <button onClick={() => router.push('/')} className="btn" style={{ backgroundColor: '#e0e0e0' }}>
-          ← Back to Home
-        </button>
-      </div>
+                  )}
+                  {oauthStatus.isExpired && oauthStatus.tokenActuallyWorks === false && (
+                    <p className="text-xs text-warning-700 mt-1">
+                      ⚠ Token expired. Please reinstall the app.
+                    </p>
+                  )}
+                </div>
+                <Badge variant="success">Connected</Badge>
+              </div>
+            </div>
+          ) : (
+            <div className="mb-6 p-4 bg-warning-50 border border-warning-200 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-warning-900 mb-1">App Not Installed</p>
+                  <p className="text-xs text-warning-700">
+                    Click below to install the app via OAuth for your location.
+                  </p>
+                </div>
+                <Badge variant="warning">Not Connected</Badge>
+              </div>
+            </div>
+          )}
+          
+          <div className="flex gap-3">
+            <Button
+              onClick={handleOAuthInstall}
+              variant={oauthStatus?.installed ? 'secondary' : 'primary'}
+              className="flex-1"
+            >
+              {oauthStatus?.installed ? 'Reinstall App' : 'Install via OAuth'}
+            </Button>
+            
+            {oauthStatus?.installed && (
+              <Button
+                onClick={async () => {
+                  if (!ghlData?.locationId) {
+                    setMessage({ type: 'error', text: 'Location ID is required' });
+                    return;
+                  }
+                  
+                  if (!confirm('Are you sure you want to clear the OAuth token? You will need to reinstall the app.')) {
+                    return;
+                  }
+                  
+                  try {
+                    const response = await fetch(`/api/auth/oauth/clear?locationId=${ghlData.locationId}`, {
+                      method: 'DELETE',
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                      setMessage({ type: 'success', text: 'OAuth token cleared. Please reinstall the app.' });
+                      await fetchOAuthStatus();
+                    } else {
+                      setMessage({ type: 'error', text: data.error || 'Failed to clear token' });
+                    }
+                  } catch (error) {
+                    setMessage({ type: 'error', text: 'Failed to clear token' });
+                  }
+                }}
+                variant="danger"
+              >
+                Clear Token
+              </Button>
+            )}
+          </div>
+          
+          {ghlData?.locationId && (
+            <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+              <p className="text-xs text-gray-600 mb-2">
+                Current Location from iframe: <code className="bg-white px-2 py-1 rounded text-xs">{ghlData.locationId}</code>
+              </p>
+              <a 
+                href={`/api/auth/oauth/diagnose?locationId=${ghlData.locationId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-primary-600 hover:text-primary-700 underline"
+              >
+                🔍 Diagnose Token Issues
+              </a>
+            </div>
+          )}
+        </Card>
       </div>
     </LocationGuard>
   );
@@ -337,15 +367,11 @@ function SetupPageContent() {
 export default function SetupPage() {
   return (
     <Suspense fallback={
-      <div className="container">
-        <div className="header">
-          <h1>Setup & Configuration</h1>
-          <p>Loading...</p>
-        </div>
+      <div className="flex items-center justify-center min-h-screen">
+        <LoadingSpinner size="lg" />
       </div>
     }>
       <SetupPageContent />
     </Suspense>
   );
 }
-

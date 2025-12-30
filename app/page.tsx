@@ -5,6 +5,23 @@ import Link from 'next/link';
 import { useGHLIframe } from '@/lib/ghl-iframe-context';
 import { LocationGuard } from '@/components/LocationGuard';
 import { OAuthGuard } from '@/components/OAuthGuard';
+import { Card } from '@/components/ui/Card';
+import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { StatusIndicator } from '@/components/ui/StatusIndicator';
+import { Alert } from '@/components/ui/Alert';
+import { Skeleton } from '@/components/ui/Skeleton';
+import {
+  CheckCircleIcon,
+  XCircleIcon,
+  ArrowRightIcon,
+  DocumentTextIcon,
+  UserGroupIcon,
+  CalendarIcon,
+  Cog6ToothIcon,
+  WrenchScrewdriverIcon,
+  PuzzlePieceIcon,
+} from '@heroicons/react/24/outline';
 
 interface ConfigStatus {
   config: {
@@ -52,10 +69,9 @@ export default function Home() {
     
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout (increased for slow connections)
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
       
       try {
-        // Load config first (critical path) - locationId is required
         const locationId = ghlData.locationId;
         const configUrl = `/api/config?locationId=${locationId}`;
         const configResponse = await fetch(configUrl, { signal: controller.signal });
@@ -70,24 +86,18 @@ export default function Home() {
         
         const data = await configResponse.json();
         
-        // Set status immediately so page can render
-        // Make sure we preserve ghlConnected from the API response
         if (data.error && (data.error.includes('DATABASE_URL') || data.error.includes('database'))) {
           setStatus({
             config: { enabled: false, fieldMappings: [] },
-            ghlConnected: data.ghlConnected ?? false, // Preserve API response
+            ghlConnected: data.ghlConnected ?? false,
             hasLocationId: data.hasLocationId ?? false,
             dbError: true,
           } as any);
         } else {
-          // Use the data from API response directly, including ghlConnected
           setStatus(data);
         }
         
-        // Load appointment status asynchronously (non-blocking)
-        // Only load if appointment syncing is enabled
         if (data.config?.syncAppointments) {
-          // Use a separate fetch without abort controller for async status
           fetch('/api/sync/appointments/status')
             .then(async (response) => {
               if (response.ok) {
@@ -104,8 +114,6 @@ export default function Home() {
               }
             })
             .catch((err) => {
-              // Silently fail - appointment status is non-critical
-              // Don't log AbortError as it's expected
               if (err.name !== 'AbortError') {
                 console.log('Appointment status fetch failed (non-critical):', err);
               }
@@ -114,9 +122,7 @@ export default function Home() {
       } catch (fetchError: any) {
         clearTimeout(timeoutId);
         
-        // Don't throw or log AbortError - it's expected when timeout is reached
         if (fetchError?.name === 'AbortError') {
-          // Timeout reached, set default status
           setStatus({
             config: { enabled: false, fieldMappings: [], syncQuotes: true, syncCustomers: false, createOpportunities: true, autoCreateFields: true, customFieldPrefix: 'maidcentral_quote_' },
             ghlConnected: false,
@@ -129,12 +135,10 @@ export default function Home() {
         throw fetchError;
       }
     } catch (error: any) {
-      // Only log non-abort errors
       if (error?.name !== 'AbortError') {
         console.error('Error fetching status:', error);
       }
       
-      // Set a default status so the page can render even on error
       setStatus({
         config: { enabled: false, fieldMappings: [], syncQuotes: true, syncCustomers: false, createOpportunities: true, autoCreateFields: true, customFieldPrefix: 'maidcentral_quote_' },
         ghlConnected: false,
@@ -149,236 +153,293 @@ export default function Home() {
   return (
     <LocationGuard>
       <OAuthGuard>
-      <div className="container">
-      <div className="header">
-        <h1>Maid Central → GoHighLevel Integration</h1>
-        <p>Sync quotes from Maid Central to GoHighLevel automatically</p>
-        {ghlData?.locationId && (
-          <p style={{ fontSize: '0.9rem', color: '#666', marginTop: '0.5rem' }}>
-            Connected to GHL Location: {ghlData.locationName || ghlData.locationId}
-            {ghlData.userName && ` (User: ${ghlData.userName})`}
-          </p>
-        )}
-        {iframeError && (
-          <p style={{ fontSize: '0.9rem', color: '#dc2626', marginTop: '0.5rem' }}>
-            {iframeError}
-          </p>
-        )}
-      </div>
-
-      {(status as any)?.error && (
-        <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
-          <strong>Error Loading Configuration</strong>
-          <p style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}>
-            {(status as any).error}
-          </p>
-        </div>
-      )}
-
-      {(status as any)?.dbError && (
-        <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
-          <strong>Database Not Configured</strong>
-          <p style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}>
-            Please set up your PostgreSQL database. Add <code>DATABASE_URL</code> to your environment variables.
-            See the README for setup instructions.
-          </p>
-        </div>
-      )}
-
-      {!status && (
-        <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
-          <strong>Unable to Load Status</strong>
-          <p style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}>
-            Please check your browser console for errors and ensure the API server is running.
-          </p>
-        </div>
-      )}
-
-      <div className="section">
-        <h2 className="section-title">Integration Status</h2>
-        
-        <div className="flex-between mb-1">
-          <span>GoHighLevel Connection:</span>
-          <span className={`status-badge ${status?.ghlConnected ? 'success' : 'error'}`}>
-            {status?.ghlConnected ? 'Connected' : 'Not Connected'}
-          </span>
-        </div>
-
-        <div className="flex-between mb-1">
-          <span>Maid Central Credentials:</span>
-          <span className={`status-badge ${status?.config ? 'success' : 'error'}`}>
-            {status?.config ? 'Configured' : 'Not Configured'}
-          </span>
-        </div>
-
-        <div className="flex-between mb-1">
-          <span>Auto Field Mapping:</span>
-          <span className="status-badge success">
-            Enabled
-          </span>
-        </div>
-
-        <div className="flex-between mb-1">
-          <span>Integration Status:</span>
-          <span className={`status-badge ${status?.config?.enabled ? 'success' : 'warning'}`}>
-            {status?.config?.enabled ? 'Enabled' : 'Disabled'}
-          </span>
-        </div>
-
-        {(status?.config?.ghlTags && status.config.ghlTags.length > 0) && (
-          <div className="flex-between mb-2">
-            <span>GHL Tags:</span>
-            <span className="status-badge success">
-              {status.config.ghlTags.join(', ')}
-            </span>
-          </div>
-        )}
-        {(status?.config?.ghlTag && !status.config.ghlTags) && (
-          <div className="flex-between mb-2">
-            <span>GHL Tag:</span>
-            <span className="status-badge success">
-              {status.config.ghlTag}
-            </span>
-          </div>
-        )}
-      </div>
-
-      <div className="section">
-        <h2 className="section-title">Sync Controls</h2>
-        <div style={{ display: 'grid', gap: '1rem', marginBottom: '1rem' }}>
-          <div className="flex-between" style={{ padding: '0.75rem', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
-            <div>
-              <strong>Quote Syncing</strong>
-              <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#666' }}>
-                {status?.config?.syncQuotes !== false ? 'Enabled - Quotes will create contacts in GHL' : 'Disabled'}
-              </p>
+        <div className="max-w-7xl mx-auto space-y-6">
+          {/* Hero Section */}
+          <div className="bg-gradient-to-br from-primary-500 via-primary-600 to-accent-500 rounded-2xl p-8 text-white">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-3xl font-bold mb-2">Maid Central → GoHighLevel Integration</h1>
+                <p className="text-primary-100 text-lg">Sync quotes, customers, and appointments automatically</p>
+                {ghlData?.locationId && (
+                  <div className="mt-4 flex items-center gap-2">
+                    <Badge variant="default" size="sm" className="bg-white/20 text-white border-white/30">
+                      {ghlData.locationName || ghlData.locationId}
+                    </Badge>
+                    {ghlData.userName && (
+                      <Badge variant="default" size="sm" className="bg-white/20 text-white border-white/30">
+                        {ghlData.userName}
+                      </Badge>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="hidden md:block">
+                <div className="w-32 h-32 bg-white/10 rounded-full flex items-center justify-center backdrop-blur-sm">
+                  <DocumentTextIcon className="w-16 h-16 text-white" />
+                </div>
+              </div>
             </div>
-            <span className={`status-badge ${status?.config?.syncQuotes !== false ? 'success' : 'error'}`}>
-              {status?.config?.syncQuotes !== false ? 'ON' : 'OFF'}
-            </span>
           </div>
-          <div className="flex-between" style={{ padding: '0.75rem', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
-            <div>
-              <strong>Customer Syncing</strong>
-              <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#666' }}>
-                {status?.config?.syncCustomers ? 'Enabled' : 'Disabled'}
-              </p>
+
+          {/* Error Alerts */}
+          {(status as any)?.error && (
+            <Alert variant="error" title="Error Loading Configuration">
+              {(status as any).error}
+            </Alert>
+          )}
+
+          {(status as any)?.dbError && (
+            <Alert variant="error" title="Database Not Configured">
+              Please set up your PostgreSQL database. Add <code className="bg-white/50 px-1 rounded">DATABASE_URL</code> to your environment variables.
+            </Alert>
+          )}
+
+          {iframeError && (
+            <Alert variant="warning" title="Iframe Context Error">
+              {iframeError}
+            </Alert>
+          )}
+
+          {loading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <Card key={i} padding="lg">
+                  <Skeleton className="h-6 w-32 mb-4" />
+                  <Skeleton className="h-4 w-full mb-2" />
+                  <Skeleton className="h-4 w-3/4" />
+                </Card>
+              ))}
             </div>
-            <span className={`status-badge ${status?.config?.syncCustomers ? 'success' : 'error'}`}>
-              {status?.config?.syncCustomers ? 'ON' : 'OFF'}
-            </span>
-          </div>
-          <div className="flex-between" style={{ padding: '0.75rem', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
-            <div>
-              <strong>Create Opportunities</strong>
-              <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#666' }}>
-                {status?.config?.createOpportunities !== false ? 'Enabled - Opportunities created with quotes' : 'Disabled'}
-              </p>
-            </div>
-            <span className={`status-badge ${status?.config?.createOpportunities !== false ? 'success' : 'error'}`}>
-              {status?.config?.createOpportunities !== false ? 'ON' : 'OFF'}
-            </span>
-          </div>
-          <div className="flex-between" style={{ padding: '0.75rem', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
-            <div>
-              <strong>Auto-Create Fields</strong>
-              <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#666' }}>
-                {status?.config?.autoCreateFields !== false ? 'Enabled - Custom fields created automatically' : 'Disabled'}
-              </p>
-            </div>
-            <span className={`status-badge ${status?.config?.autoCreateFields !== false ? 'success' : 'error'}`}>
-              {status?.config?.autoCreateFields !== false ? 'ON' : 'OFF'}
-            </span>
-          </div>
-          <div className="flex-between" style={{ padding: '0.75rem', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
-            <div>
-              <strong>Appointment Syncing</strong>
-              <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#666' }}>
-                {status?.config?.syncAppointments ? `Enabled - ${status?.appointmentSyncStatus?.totalSynced || 0} appointments synced` : 'Disabled'}
-              </p>
-              {status?.appointmentSyncStatus?.lastSync && (
-                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.75rem', color: '#999' }}>
-                  Last sync: {new Date(status.appointmentSyncStatus.lastSync).toLocaleString()}
-                </p>
+          ) : (
+            <>
+              {/* Status Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <Card hover padding="lg">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-medium text-gray-500">GoHighLevel</h3>
+                    {status?.ghlConnected ? (
+                      <CheckCircleIcon className="w-6 h-6 text-success-600" />
+                    ) : (
+                      <XCircleIcon className="w-6 h-6 text-error-600" />
+                    )}
+                  </div>
+                  <p className="text-2xl font-bold text-gray-900 mb-1">
+                    {status?.ghlConnected ? 'Connected' : 'Not Connected'}
+                  </p>
+                  <StatusIndicator
+                    status={status?.ghlConnected ? 'connected' : 'disconnected'}
+                    label={status?.ghlConnected ? 'Active' : 'Inactive'}
+                    size="sm"
+                  />
+                </Card>
+
+                <Card hover padding="lg">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-medium text-gray-500">Maid Central</h3>
+                    {status?.config ? (
+                      <CheckCircleIcon className="w-6 h-6 text-success-600" />
+                    ) : (
+                      <XCircleIcon className="w-6 h-6 text-error-600" />
+                    )}
+                  </div>
+                  <p className="text-2xl font-bold text-gray-900 mb-1">
+                    {status?.config ? 'Configured' : 'Not Configured'}
+                  </p>
+                  <StatusIndicator
+                    status={status?.config ? 'connected' : 'disconnected'}
+                    label={status?.config ? 'Ready' : 'Setup Required'}
+                    size="sm"
+                  />
+                </Card>
+
+                <Card hover padding="lg">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-medium text-gray-500">Integration</h3>
+                    {status?.config?.enabled ? (
+                      <CheckCircleIcon className="w-6 h-6 text-success-600" />
+                    ) : (
+                      <XCircleIcon className="w-6 h-6 text-warning-600" />
+                    )}
+                  </div>
+                  <p className="text-2xl font-bold text-gray-900 mb-1">
+                    {status?.config?.enabled ? 'Enabled' : 'Disabled'}
+                  </p>
+                  <StatusIndicator
+                    status={status?.config?.enabled ? 'connected' : 'warning'}
+                    label={status?.config?.enabled ? 'Active' : 'Inactive'}
+                    size="sm"
+                  />
+                </Card>
+
+                <Card hover padding="lg">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-medium text-gray-500">Appointments</h3>
+                    {status?.appointmentSyncStatus?.enabled ? (
+                      <CheckCircleIcon className="w-6 h-6 text-success-600" />
+                    ) : (
+                      <XCircleIcon className="w-6 h-6 text-gray-400" />
+                    )}
+                  </div>
+                  <p className="text-2xl font-bold text-gray-900 mb-1">
+                    {status?.appointmentSyncStatus?.totalSynced || 0}
+                  </p>
+                  <p className="text-sm text-gray-500">Synced</p>
+                </Card>
+              </div>
+
+              {/* Sync Controls */}
+              <Card padding="lg">
+                <h2 className="text-xl font-semibold text-gray-900 mb-6">Sync Controls</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                    <div>
+                      <p className="font-medium text-gray-900">Quote Syncing</p>
+                      <p className="text-sm text-gray-500 mt-1">
+                        {status?.config?.syncQuotes !== false ? 'Enabled' : 'Disabled'}
+                      </p>
+                    </div>
+                    <Badge variant={status?.config?.syncQuotes !== false ? 'success' : 'error'}>
+                      {status?.config?.syncQuotes !== false ? 'ON' : 'OFF'}
+                    </Badge>
+                  </div>
+
+                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                    <div>
+                      <p className="font-medium text-gray-900">Customer Syncing</p>
+                      <p className="text-sm text-gray-500 mt-1">
+                        {status?.config?.syncCustomers ? 'Enabled' : 'Disabled'}
+                      </p>
+                    </div>
+                    <Badge variant={status?.config?.syncCustomers ? 'success' : 'error'}>
+                      {status?.config?.syncCustomers ? 'ON' : 'OFF'}
+                    </Badge>
+                  </div>
+
+                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                    <div>
+                      <p className="font-medium text-gray-900">Opportunities</p>
+                      <p className="text-sm text-gray-500 mt-1">
+                        {status?.config?.createOpportunities !== false ? 'Enabled' : 'Disabled'}
+                      </p>
+                    </div>
+                    <Badge variant={status?.config?.createOpportunities !== false ? 'success' : 'error'}>
+                      {status?.config?.createOpportunities !== false ? 'ON' : 'OFF'}
+                    </Badge>
+                  </div>
+
+                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                    <div>
+                      <p className="font-medium text-gray-900">Auto-Create Fields</p>
+                      <p className="text-sm text-gray-500 mt-1">
+                        {status?.config?.autoCreateFields !== false ? 'Enabled' : 'Disabled'}
+                      </p>
+                    </div>
+                    <Badge variant={status?.config?.autoCreateFields !== false ? 'success' : 'error'}>
+                      {status?.config?.autoCreateFields !== false ? 'ON' : 'OFF'}
+                    </Badge>
+                  </div>
+
+                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                    <div>
+                      <p className="font-medium text-gray-900">Appointment Syncing</p>
+                      <p className="text-sm text-gray-500 mt-1">
+                        {status?.config?.syncAppointments ? `Enabled - ${status?.appointmentSyncStatus?.totalSynced || 0} synced` : 'Disabled'}
+                      </p>
+                      {status?.appointmentSyncStatus?.lastSync && (
+                        <p className="text-xs text-gray-400 mt-1">
+                          Last sync: {new Date(status.appointmentSyncStatus.lastSync).toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+                    <Badge variant={status?.config?.syncAppointments ? 'success' : 'error'}>
+                      {status?.config?.syncAppointments ? 'ON' : 'OFF'}
+                    </Badge>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Quick Actions */}
+              <Card padding="lg">
+                <h2 className="text-xl font-semibold text-gray-900 mb-6">Quick Actions</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <Link href="/setup">
+                    <Button variant="primary" className="w-full justify-between group">
+                      <div className="flex items-center gap-2">
+                        <WrenchScrewdriverIcon className="w-5 h-5" />
+                        <span>Setup</span>
+                      </div>
+                      <ArrowRightIcon className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                    </Button>
+                  </Link>
+                  <Link href="/settings">
+                    <Button variant="secondary" className="w-full justify-between group">
+                      <div className="flex items-center gap-2">
+                        <Cog6ToothIcon className="w-5 h-5" />
+                        <span>Settings</span>
+                      </div>
+                      <ArrowRightIcon className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                    </Button>
+                  </Link>
+                  <Link href="/mapping">
+                    <Button variant="secondary" className="w-full justify-between group">
+                      <div className="flex items-center gap-2">
+                        <PuzzlePieceIcon className="w-5 h-5" />
+                        <span>Mapping</span>
+                      </div>
+                      <ArrowRightIcon className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                    </Button>
+                  </Link>
+                  <Link href="/quotes">
+                    <Button variant="secondary" className="w-full justify-between group">
+                      <div className="flex items-center gap-2">
+                        <DocumentTextIcon className="w-5 h-5" />
+                        <span>Quotes</span>
+                      </div>
+                      <ArrowRightIcon className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                    </Button>
+                  </Link>
+                </div>
+              </Card>
+
+              {/* Tags Display */}
+              {(status?.config?.ghlTags && status.config.ghlTags.length > 0) && (
+                <Card padding="lg">
+                  <h2 className="text-xl font-semibold text-gray-900 mb-4">Active Tags</h2>
+                  <div className="flex flex-wrap gap-2">
+                    {status.config.ghlTags.map((tag, index) => (
+                      <Badge key={index} variant="info" size="lg">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                </Card>
               )}
-            </div>
-            <span className={`status-badge ${status?.config?.syncAppointments ? 'success' : 'error'}`}>
-              {status?.config?.syncAppointments ? 'ON' : 'OFF'}
-            </span>
-          </div>
-        </div>
-      </div>
 
-      <div className="section">
-        <h2 className="section-title">Quick Actions</h2>
-        <div className="flex" style={{ flexWrap: 'wrap', gap: '1rem' }}>
-          <Link href="/setup" className="btn btn-primary">
-            Setup & Configuration
-          </Link>
-          <Link href="/settings" className="btn btn-secondary">
-            Settings & Toggles
-          </Link>
-          <Link href="/customers" className="btn btn-secondary">
-            Customers
-          </Link>
-          <Link href="/quotes" className="btn btn-secondary">
-            Quotes
-          </Link>
-          <Link href="/widget" className="btn btn-secondary">
-            Booking Widget
-          </Link>
-          <Link href="/widget-config" className="btn btn-secondary">
-            Widget Config
-          </Link>
-          <Link href="/appointments" className="btn btn-secondary">
-            Appointments
-          </Link>
+              {/* How to Sync */}
+              <Card padding="lg">
+                <h2 className="text-xl font-semibold text-gray-900 mb-4">How to Sync Quotes</h2>
+                <p className="text-gray-600 mb-4">
+                  Since Maid Central doesn't support webhooks, you can sync quotes manually:
+                </p>
+                <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                  <p className="text-sm text-gray-700 mb-2">
+                    <strong>Option 1:</strong> Use the Quotes page to view and sync individual quotes
+                  </p>
+                  <p className="text-sm text-gray-700">
+                    <strong>Option 2:</strong> Use the API endpoint directly (POST or GET):
+                  </p>
+                  <code className="block mt-2 p-3 bg-white rounded border text-xs font-mono break-all">
+                    {typeof window !== 'undefined' ? `${window.location.origin}/api/webhook/quote?quoteId=YOUR_QUOTE_ID` : 'Loading...'}
+                  </code>
+                </div>
+                <Alert variant="warning">
+                  <strong>Note:</strong> Manual sync is currently the only option. We're working on adding automatic polling in a future update.
+                </Alert>
+              </Card>
+            </>
+          )}
         </div>
-      </div>
-
-      <div className="section">
-        <h2 className="section-title">How to Sync Quotes</h2>
-        <p style={{ marginBottom: '0.5rem' }}>
-          Since Maid Central doesn't support webhooks, you can sync quotes manually:
-        </p>
-        <div style={{ 
-          padding: '1rem', 
-          backgroundColor: '#f5f5f5', 
-          borderRadius: '4px',
-          marginBottom: '1rem'
-        }}>
-          <p style={{ margin: '0 0 0.5rem 0' }}>
-            <strong>Option 1:</strong> Use the Quotes page to view and sync individual quotes
-          </p>
-          <p style={{ margin: '0 0 0.5rem 0' }}>
-            <strong>Option 2:</strong> Use the API endpoint directly (POST or GET):
-          </p>
-          <code style={{ 
-            display: 'block', 
-            padding: '0.5rem', 
-            backgroundColor: '#fff', 
-            borderRadius: '4px',
-            fontFamily: 'monospace',
-            fontSize: '0.85rem',
-            wordBreak: 'break-all',
-            marginTop: '0.5rem'
-          }}>
-            {typeof window !== 'undefined' ? `${window.location.origin}/api/webhook/quote?quoteId=YOUR_QUOTE_ID` : 'Loading...'}
-          </code>
-        </div>
-        <div style={{ 
-          padding: '0.75rem', 
-          backgroundColor: '#fff3cd', 
-          borderRadius: '4px',
-          borderLeft: '4px solid #ffc107',
-          fontSize: '0.9rem'
-        }}>
-          <strong>Note:</strong> Manual sync is currently the only option. We're working on adding automatic polling in a future update.
-        </div>
-      </div>
-      </div>
       </OAuthGuard>
     </LocationGuard>
   );
 }
-

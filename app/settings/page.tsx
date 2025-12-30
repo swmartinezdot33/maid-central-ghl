@@ -2,21 +2,38 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useGHLIframe } from '@/lib/ghl-iframe-context';
 import { LocationGuard } from '@/components/LocationGuard';
-import { OAuthGuard } from '@/components/OAuthGuard';
+import { Card } from '@/components/ui/Card';
+import { Toggle } from '@/components/ui/Toggle';
+import { Input } from '@/components/ui/Input';
+import { Select } from '@/components/ui/Select';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
+import { Alert } from '@/components/ui/Alert';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { StatusIndicator } from '@/components/ui/StatusIndicator';
+import {
+  ArrowLeftIcon,
+  CheckCircleIcon,
+  XCircleIcon,
+  CalendarIcon,
+  TagIcon,
+} from '@heroicons/react/24/outline';
 
 interface Config {
   enabled: boolean;
   ghlLocationId?: string;
-  ghlTag?: string; // DEPRECATED - kept for backward compatibility
-  ghlTags?: string[]; // Multiple tags support
+  ghlTag?: string;
+  ghlTags?: string[];
   syncQuotes: boolean;
   syncCustomers: boolean;
   createOpportunities: boolean;
   autoCreateFields: boolean;
   customFieldPrefix: string;
-  // Appointment sync fields
   syncAppointments?: boolean;
   ghlCalendarId?: string;
   appointmentSyncInterval?: number;
@@ -31,6 +48,7 @@ interface Calendar {
 }
 
 function SettingsPageContent() {
+  const router = useRouter();
   const { ghlData } = useGHLIframe();
   const [config, setConfig] = useState<Config | null>(null);
   const [loading, setLoading] = useState(true);
@@ -47,7 +65,6 @@ function SettingsPageContent() {
   }, [ghlData?.locationId]);
 
   useEffect(() => {
-    // Load calendars when we have locationId from iframe context
     if (ghlData?.locationId) {
       loadCalendars();
     }
@@ -66,7 +83,6 @@ function SettingsPageContent() {
       const data = await response.json();
       
       if (response.ok) {
-        console.log('[Settings] Config loaded:', data);
         setConfig(data.config || {
           enabled: false,
           syncQuotes: true,
@@ -78,11 +94,8 @@ function SettingsPageContent() {
           appointmentSyncInterval: 15,
           appointmentConflictResolution: 'timestamp',
         });
-        // Store OAuth connection status
         setGhlConnected(data.ghlConnected || false);
-        console.log('[Settings] GHL Connected:', data.ghlConnected);
       } else {
-        console.error('[Settings] Failed to load config:', data);
         if (data.error) {
           setMessage({ type: 'error', text: `Failed to load configuration: ${data.error}` });
         }
@@ -96,63 +109,28 @@ function SettingsPageContent() {
   };
 
   const loadCalendars = async () => {
-    if (!ghlData?.locationId) {
-      console.warn('[Settings] Cannot load calendars without locationId');
-      console.warn('[Settings] ghlData:', ghlData);
-      return;
-    }
-    
-    const locationId = ghlData.locationId;
-    console.log('[Settings] Loading calendars for locationId:', locationId);
+    if (!ghlData?.locationId) return;
     
     try {
       setLoadingCalendars(true);
-      const url = `/api/ghl/calendars?locationId=${encodeURIComponent(locationId)}`;
-      console.log('[Settings] Fetching calendars from:', url);
-      const response = await fetch(url, {
-        headers: {
-          'x-ghl-location-id': locationId, // Also send as header as fallback
-        },
+      const response = await fetch(`/api/ghl/calendars?locationId=${encodeURIComponent(ghlData.locationId)}`, {
+        headers: { 'x-ghl-location-id': ghlData.locationId },
       });
       const data = await response.json();
       
-      if (response.ok) {
-        if (data.calendars && Array.isArray(data.calendars)) {
-          setCalendars(data.calendars);
-          if (data.calendars.length === 0 && !data.error) {
-            console.warn('No calendars found. This could mean:');
-            console.warn('1. No calendars exist in your GHL location');
-            console.warn('2. The calendar API endpoint may be incorrect');
-            console.warn('3. Check the server logs for API errors');
-          }
-        } else {
-          console.error('Invalid calendars response:', data);
-          setCalendars([]);
-        }
-      } else {
-        console.error('Failed to load calendars:', data.error);
-        setCalendars([]);
-        if (data.error) {
-          setMessage({ type: 'error', text: `Failed to load calendars: ${data.error}` });
-        }
+      if (response.ok && data.calendars && Array.isArray(data.calendars)) {
+        setCalendars(data.calendars);
       }
     } catch (error) {
       console.error('Error loading calendars:', error);
-      setCalendars([]);
-      setMessage({ type: 'error', text: `Error loading calendars: ${error instanceof Error ? error.message : 'Unknown error'}` });
     } finally {
       setLoadingCalendars(false);
     }
   };
 
   const saveConfig = async () => {
-    if (!ghlData?.locationId) {
-      setMessage({ type: 'error', text: 'Location ID is required. Please ensure you are accessing this app through GoHighLevel.' });
-      return;
-    }
-    
-    if (!config) {
-      setMessage({ type: 'error', text: 'No configuration to save' });
+    if (!ghlData?.locationId || !config) {
+      setMessage({ type: 'error', text: 'Location ID is required or no configuration to save' });
       return;
     }
     
@@ -160,14 +138,7 @@ function SettingsPageContent() {
     setMessage(null);
 
     try {
-      const configToSave = {
-        ...config,
-        ghlLocationId: ghlData.locationId, // Ensure locationId is set
-      };
-      
-      console.log('[Settings] Saving config:', configToSave);
-      console.log('[Settings] Enabled state:', configToSave.enabled);
-      
+      const configToSave = { ...config, ghlLocationId: ghlData.locationId };
       const response = await fetch(`/api/config?locationId=${ghlData.locationId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -175,16 +146,10 @@ function SettingsPageContent() {
       });
 
       if (response.ok) {
-        const savedData = await response.json();
-        console.log('[Settings] Config saved successfully:', savedData);
-        
-        // Reload config to ensure we have the latest state
         await loadConfig();
-        
         setMessage({ type: 'success', text: 'Settings saved successfully!' });
       } else {
         const data = await response.json();
-        console.error('[Settings] Failed to save config:', data);
         setMessage({ type: 'error', text: data.error || 'Failed to save settings' });
       }
     } catch (error) {
@@ -197,371 +162,325 @@ function SettingsPageContent() {
 
   if (loading) {
     return (
-      <div className="container">
-        <div className="header">
-          <h1>Settings</h1>
-          <p>Loading...</p>
-        </div>
+      <div className="max-w-6xl mx-auto space-y-6">
+        <Skeleton className="h-12 w-64" />
+        <Card padding="lg">
+          <Skeleton className="h-6 w-48 mb-4" />
+          <Skeleton className="h-20 w-full" />
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="container">
-      <div className="header">
-        <h1>Integration Settings</h1>
-        <p>Configure how data flows from Maid Central to GoHighLevel</p>
-      </div>
-
-      {message && (
-        <div className={`alert alert-${message.type}`}>
-          {message.text}
-        </div>
-      )}
-
-      <div className="section">
-        <div className="flex-between mb-2">
-          <h2 className="section-title">Integration Controls</h2>
-          <Link href="/" className="btn" style={{ backgroundColor: '#e0e0e0' }}>
-            ← Back to Home
-          </Link>
-        </div>
-
-        <div className="mb-2" style={{ padding: '1rem', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
-          <div className="flex-between mb-2">
-            <div>
-              <strong>GoHighLevel Connection</strong>
-              <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem', color: '#666' }}>
-                OAuth connection status for this location
-              </p>
-            </div>
-            <span className={`status-badge ${ghlConnected ? 'success' : 'error'}`}>
-              {ghlConnected ? 'Connected' : 'Not Connected'}
-            </span>
-          </div>
-          {!ghlConnected && (
-            <div style={{ marginTop: '0.5rem', padding: '0.75rem', backgroundColor: '#fff3cd', borderRadius: '4px', fontSize: '0.85rem' }}>
-              <p style={{ margin: 0 }}>
-                <strong>OAuth not connected.</strong> Please install the app via OAuth in the <Link href="/setup" style={{ color: '#2563eb', textDecoration: 'underline' }}>Setup page</Link>.
-              </p>
-            </div>
-          )}
-        </div>
-
-        <div className="mb-2" style={{ padding: '1rem', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
-          <div className="flex-between mb-2">
-            <div>
-              <strong>Enable Integration</strong>
-              <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem', color: '#666' }}>
-                Master switch to enable/disable the entire integration
-              </p>
-            </div>
-            <label className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={config?.enabled || false}
-                onChange={(e) => setConfig({ ...config!, enabled: e.target.checked })}
-              />
-              <span className="toggle-slider"></span>
-            </label>
-          </div>
-        </div>
-
-        <div className="mb-2" style={{ padding: '1rem', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
-          <div className="flex-between mb-2">
-            <div>
-              <strong>Sync Quotes</strong>
-              <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem', color: '#666' }}>
-                When enabled, new quotes from Maid Central will automatically create contacts and opportunities in GHL
-              </p>
-            </div>
-            <label className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={config?.syncQuotes !== false}
-                onChange={(e) => setConfig({ ...config!, syncQuotes: e.target.checked })}
-                disabled={!config?.enabled}
-              />
-              <span className="toggle-slider"></span>
-            </label>
-          </div>
-        </div>
-
-        <div className="mb-2" style={{ padding: '1rem', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
-          <div className="flex-between mb-2">
-            <div>
-              <strong>Sync Customers</strong>
-              <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem', color: '#666' }}>
-                When enabled, customer updates from Maid Central will sync to GHL
-              </p>
-            </div>
-            <label className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={config?.syncCustomers || false}
-                onChange={(e) => setConfig({ ...config!, syncCustomers: e.target.checked })}
-                disabled={!config?.enabled}
-              />
-              <span className="toggle-slider"></span>
-            </label>
-          </div>
-        </div>
-
-        <div className="mb-2" style={{ padding: '1rem', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
-          <div className="flex-between mb-2">
-            <div>
-              <strong>Create Opportunities</strong>
-              <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem', color: '#666' }}>
-                When enabled, an opportunity/deal will be created in GHL for each quote synced
-              </p>
-            </div>
-            <label className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={config?.createOpportunities !== false}
-                onChange={(e) => setConfig({ ...config!, createOpportunities: e.target.checked })}
-                disabled={!config?.enabled || !config?.syncQuotes}
-              />
-              <span className="toggle-slider"></span>
-            </label>
-          </div>
-        </div>
-
-        <div className="mb-2" style={{ padding: '1rem', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
-          <div className="flex-between mb-2">
-            <div>
-              <strong>Auto-Create Custom Fields</strong>
-              <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem', color: '#666' }}>
-                Automatically create custom fields in GHL for Maid Central data that doesn't map to native fields
-              </p>
-            </div>
-            <label className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={config?.autoCreateFields !== false}
-                onChange={(e) => setConfig({ ...config!, autoCreateFields: e.target.checked })}
-                disabled={!config?.enabled}
-              />
-              <span className="toggle-slider"></span>
-            </label>
-          </div>
-        </div>
-      </div>
-
-      <div className="section">
-        <h2 className="section-title">Appointment Sync Configuration</h2>
-        
-        <div className="mb-2" style={{ padding: '1rem', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
-          <div className="flex-between mb-2">
-            <div>
-              <strong>Sync Appointments</strong>
-              <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem', color: '#666' }}>
-                When enabled, appointments will sync bidirectionally between Maid Central and GoHighLevel calendars
-              </p>
-            </div>
-            <label className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={config?.syncAppointments || false}
-                onChange={(e) => setConfig({ ...config!, syncAppointments: e.target.checked })}
-                disabled={!config?.enabled}
-              />
-              <span className="toggle-slider"></span>
-            </label>
-          </div>
-        </div>
-
-        {config?.syncAppointments && (
-          <>
-            <div className="form-group" style={{ maxWidth: '500px', marginBottom: '1.5rem' }}>
-              <label htmlFor="ghlCalendar">GHL Calendar</label>
-              {loadingCalendars ? (
-                <select id="ghlCalendar" disabled style={{ padding: '0.5rem', width: '100%' }}>
-                  <option>Loading calendars...</option>
-                </select>
-              ) : calendars.length === 0 ? (
-                <div style={{ padding: '0.75rem', backgroundColor: '#fff3cd', borderRadius: '4px', fontSize: '0.85rem' }}>
-                  <strong>No calendars found.</strong>
-                  <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem' }}>
-                    This could mean:
-                  </p>
-                  <ul style={{ margin: '0.5rem 0 0 1.5rem', padding: 0, fontSize: '0.85rem' }}>
-                    <li>No calendars exist in your GoHighLevel location</li>
-                    <li>The calendar API endpoint may need adjustment</li>
-                    <li>Check the browser console and server logs for API errors</li>
-                  </ul>
-                  <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem' }}>
-                    <strong>Note:</strong> You can still enter a calendar ID manually if you know it from your GHL account.
-                  </p>
-                </div>
-              ) : (
-                <select
-                  id="ghlCalendar"
-                  value={config?.ghlCalendarId || ''}
-                  onChange={(e) => setConfig({ ...config!, ghlCalendarId: e.target.value || undefined })}
-                  disabled={!config?.enabled || !config?.syncAppointments}
-                  style={{ padding: '0.5rem', width: '100%' }}
-                >
-                  <option value="">Select a calendar...</option>
-                  {calendars.map((calendar) => (
-                    <option key={calendar.id} value={calendar.id}>
-                      {calendar.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-              <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.5rem' }}>
-                Select which GoHighLevel calendar to sync appointments with. If no calendars appear above, check your GHL account to ensure calendars are set up in this location, or enter the calendar ID manually below.
-              </p>
-              <div className="form-group" style={{ maxWidth: '500px', marginTop: '1rem' }}>
-                <label htmlFor="ghlCalendarIdManual">Or enter Calendar ID manually:</label>
-                <input
-                  type="text"
-                  id="ghlCalendarIdManual"
-                  value={config?.ghlCalendarId || ''}
-                  onChange={(e) => setConfig({ ...config!, ghlCalendarId: e.target.value || undefined })}
-                  disabled={!config?.enabled || !config?.syncAppointments}
-                  placeholder="e.g., abc123xyz"
-                  style={{ padding: '0.5rem', width: '100%' }}
-                />
-              </div>
-            </div>
-
-            <div className="form-group" style={{ maxWidth: '500px', marginBottom: '1.5rem' }}>
-              <label htmlFor="conflictResolution">Conflict Resolution Strategy</label>
-              <select
-                id="conflictResolution"
-                value={config?.appointmentConflictResolution || 'timestamp'}
-                onChange={(e) => setConfig({ 
-                  ...config!, 
-                  appointmentConflictResolution: e.target.value as 'maid_central_wins' | 'ghl_wins' | 'timestamp'
-                })}
-                disabled={!config?.enabled || !config?.syncAppointments}
-                style={{ padding: '0.5rem', width: '100%' }}
-              >
-                <option value="timestamp">Most Recent Wins (timestamp-based)</option>
-                <option value="maid_central_wins">Maid Central Always Wins</option>
-                <option value="ghl_wins">GoHighLevel Always Wins</option>
-              </select>
-              <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.5rem' }}>
-                How to handle conflicts when the same appointment is modified in both systems
-              </p>
-            </div>
-
-            <div className="form-group" style={{ maxWidth: '500px', marginBottom: '1.5rem' }}>
-              <label htmlFor="syncInterval">Sync Interval (minutes)</label>
-              <input
-                type="number"
-                id="syncInterval"
-                min="5"
-                max="1440"
-                step="5"
-                value={config?.appointmentSyncInterval || 15}
-                onChange={(e) => setConfig({ ...config!, appointmentSyncInterval: parseInt(e.target.value) || 15 })}
-                disabled={!config?.enabled || !config?.syncAppointments}
-                style={{ padding: '0.5rem', width: '100%' }}
-              />
-              <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.5rem' }}>
-                How often to poll for appointment changes (5-1440 minutes). Webhooks are used when available.
-              </p>
-            </div>
-
-            <div style={{ marginBottom: '1.5rem' }}>
-              <button
-                onClick={async () => {
-                  if (!ghlData?.locationId) {
-                    setMessage({ type: 'error', text: 'Location ID is required' });
-                    return;
-                  }
-                  
-                  try {
-                    const response = await fetch(`/api/sync/appointments?action=full&locationId=${ghlData.locationId}`, { method: 'POST' });
-                    const data = await response.json();
-                    if (response.ok) {
-                      setMessage({ 
-                        type: 'success', 
-                        text: `Sync completed! ${data.synced || 0} appointments synced, ${data.errors || 0} errors.` 
-                      });
-                    } else {
-                      setMessage({ type: 'error', text: data.error || 'Failed to sync appointments' });
-                    }
-                  } catch (error) {
-                    setMessage({ type: 'error', text: 'Failed to sync appointments' });
-                  }
-                }}
-                disabled={!config?.enabled || !config?.syncAppointments || !config?.ghlCalendarId}
-                className="btn"
-                style={{ backgroundColor: '#2563eb', color: 'white' }}
-              >
-                Sync All Appointments Now
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-
-      <div className="section">
-        <h2 className="section-title">GHL Tags Configuration</h2>
-        <div className="form-group" style={{ maxWidth: '500px' }}>
-          <label htmlFor="ghlTags">Tags (comma-separated)</label>
-          <input
-            type="text"
-            id="ghlTags"
-            value={config?.ghlTags ? config.ghlTags.join(', ') : (config?.ghlTag || '')}
-            onChange={(e) => {
-              const tagsStr = e.target.value.trim();
-              if (tagsStr) {
-                const tags = tagsStr.split(',').map(t => t.trim()).filter(t => t.length > 0);
-                setConfig({ ...config!, ghlTags: tags, ghlTag: tags[0] || undefined }); // Keep first tag for backward compatibility
-              } else {
-                setConfig({ ...config!, ghlTags: [], ghlTag: undefined });
-              }
-            }}
-            placeholder="e.g., Maid Central Quote, Quote Source, New Lead"
-            disabled={!config?.enabled}
-          />
-          <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.5rem' }}>
-            Enter multiple tags separated by commas. These tags will be added to contacts created/updated by the integration. Leave empty to skip tagging.
-          </p>
-          {config?.ghlTags && config.ghlTags.length > 0 && (
-            <div style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}>
-              <strong>Active tags:</strong> {config.ghlTags.join(', ')}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="section">
-        <h2 className="section-title">How It Works</h2>
-        <div style={{ padding: '1rem', backgroundColor: '#f0f7ff', borderRadius: '4px' }}>
-          <p style={{ margin: '0 0 0.75rem 0', fontWeight: 500 }}>Automatic Field Mapping:</p>
-          <ul style={{ margin: '0', paddingLeft: '1.5rem', lineHeight: '1.8' }}>
-            <li><strong>Basic Fields:</strong> Name, email, phone, and address automatically map to GHL's native contact fields</li>
-            <li><strong>All Other Fields:</strong> Automatically create custom fields with prefix <code>{config?.customFieldPrefix || 'maidcentral_quote_'}</code></li>
-            <li><strong>No Manual Mapping:</strong> Everything happens automatically based on field names</li>
-          </ul>
-        </div>
-      </div>
-
-      <div className="section">
-        <button 
-          onClick={saveConfig} 
-          className="btn btn-primary" 
-          disabled={saving || !config}
-          style={{ width: '100%' }}
-        >
-          {saving ? 'Saving...' : 'Save Settings'}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-export default function SettingsPage() {
-  return (
     <LocationGuard>
-      <SettingsPageContent />
+      <div className="max-w-6xl mx-auto space-y-6">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" onClick={() => router.push('/')} className="p-2">
+            <ArrowLeftIcon className="w-5 h-5" />
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Integration Settings</h1>
+            <p className="text-gray-600 mt-1">Configure how data flows from Maid Central to GoHighLevel</p>
+          </div>
+        </div>
+
+        {message && (
+          <Alert
+            variant={message.type === 'error' ? 'error' : 'success'}
+            onClose={() => setMessage(null)}
+          >
+            {message.text}
+          </Alert>
+        )}
+
+        {/* Connection Status */}
+        <Card padding="lg">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-1">GoHighLevel Connection</h3>
+              <p className="text-sm text-gray-500">OAuth connection status for this location</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <StatusIndicator
+                status={ghlConnected ? 'connected' : 'disconnected'}
+                label={ghlConnected ? 'Connected' : 'Not Connected'}
+              />
+              {!ghlConnected && (
+                <Link href="/setup">
+                  <Button variant="primary" size="sm">Setup OAuth</Button>
+                </Link>
+              )}
+            </div>
+          </div>
+        </Card>
+
+        <Tabs defaultValue="integration">
+          <TabsList>
+            <TabsTrigger value="integration">Integration Controls</TabsTrigger>
+            <TabsTrigger value="appointments">Appointment Sync</TabsTrigger>
+            <TabsTrigger value="tags">Tags & Fields</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="integration">
+            <Card padding="lg">
+              <div className="space-y-6">
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div className="flex-1">
+                    <Toggle
+                      label="Enable Integration"
+                      description="Master switch to enable/disable the entire integration"
+                      checked={config?.enabled || false}
+                      onChange={(e) => setConfig({ ...config!, enabled: e.target.checked })}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div className="flex-1">
+                    <Toggle
+                      label="Sync Quotes"
+                      description="When enabled, new quotes from Maid Central will automatically create contacts and opportunities in GHL"
+                      checked={config?.syncQuotes !== false}
+                      onChange={(e) => setConfig({ ...config!, syncQuotes: e.target.checked })}
+                      disabled={!config?.enabled}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div className="flex-1">
+                    <Toggle
+                      label="Sync Customers"
+                      description="When enabled, customer updates from Maid Central will sync to GHL"
+                      checked={config?.syncCustomers || false}
+                      onChange={(e) => setConfig({ ...config!, syncCustomers: e.target.checked })}
+                      disabled={!config?.enabled}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div className="flex-1">
+                    <Toggle
+                      label="Create Opportunities"
+                      description="When enabled, an opportunity/deal will be created in GHL for each quote synced"
+                      checked={config?.createOpportunities !== false}
+                      onChange={(e) => setConfig({ ...config!, createOpportunities: e.target.checked })}
+                      disabled={!config?.enabled || !config?.syncQuotes}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div className="flex-1">
+                    <Toggle
+                      label="Auto-Create Custom Fields"
+                      description="Automatically create custom fields in GHL for Maid Central data that doesn't map to native fields"
+                      checked={config?.autoCreateFields !== false}
+                      onChange={(e) => setConfig({ ...config!, autoCreateFields: e.target.checked })}
+                      disabled={!config?.enabled}
+                    />
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="appointments">
+            <Card padding="lg">
+              <div className="space-y-6">
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div className="flex-1">
+                    <Toggle
+                      label="Sync Appointments"
+                      description="When enabled, appointments will sync bidirectionally between Maid Central and GoHighLevel calendars"
+                      checked={config?.syncAppointments || false}
+                      onChange={(e) => setConfig({ ...config!, syncAppointments: e.target.checked })}
+                      disabled={!config?.enabled}
+                    />
+                  </div>
+                </div>
+
+                {config?.syncAppointments && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        GHL Calendar
+                      </label>
+                      {loadingCalendars ? (
+                        <div className="flex items-center gap-2 p-4 bg-gray-50 rounded-lg">
+                          <LoadingSpinner size="sm" />
+                          <span className="text-sm text-gray-500">Loading calendars...</span>
+                        </div>
+                      ) : calendars.length === 0 ? (
+                        <Alert variant="warning">
+                          <p className="mb-2"><strong>No calendars found.</strong></p>
+                          <p className="text-sm mb-2">This could mean:</p>
+                          <ul className="text-sm list-disc list-inside space-y-1">
+                            <li>No calendars exist in your GoHighLevel location</li>
+                            <li>The calendar API endpoint may need adjustment</li>
+                            <li>Check the browser console and server logs for API errors</li>
+                          </ul>
+                          <p className="text-sm mt-2">
+                            <strong>Note:</strong> You can still enter a calendar ID manually below.
+                          </p>
+                        </Alert>
+                      ) : (
+                        <Select
+                          options={[
+                            { value: '', label: 'Select a calendar...' },
+                            ...calendars.map(c => ({ value: c.id, label: c.name }))
+                          ]}
+                          value={config?.ghlCalendarId || ''}
+                          onChange={(e) => setConfig({ ...config!, ghlCalendarId: e.target.value || undefined })}
+                          disabled={!config?.enabled || !config?.syncAppointments}
+                        />
+                      )}
+                      <Input
+                        label="Or enter Calendar ID manually"
+                        value={config?.ghlCalendarId || ''}
+                        onChange={(e) => setConfig({ ...config!, ghlCalendarId: e.target.value || undefined })}
+                        disabled={!config?.enabled || !config?.syncAppointments}
+                        placeholder="e.g., abc123xyz"
+                        helperText="Enter the calendar ID if you know it from your GHL account"
+                      />
+                    </div>
+
+                    <div>
+                      <Select
+                        label="Conflict Resolution Strategy"
+                        options={[
+                          { value: 'timestamp', label: 'Most Recent Wins (timestamp-based)' },
+                          { value: 'maid_central_wins', label: 'Maid Central Always Wins' },
+                          { value: 'ghl_wins', label: 'GoHighLevel Always Wins' },
+                        ]}
+                        value={config?.appointmentConflictResolution || 'timestamp'}
+                        onChange={(e) => setConfig({ 
+                          ...config!, 
+                          appointmentConflictResolution: e.target.value as 'maid_central_wins' | 'ghl_wins' | 'timestamp'
+                        })}
+                        disabled={!config?.enabled || !config?.syncAppointments}
+                        helperText="How to handle conflicts when the same appointment is modified in both systems"
+                      />
+                    </div>
+
+                    <div>
+                      <Input
+                        label="Sync Interval (minutes)"
+                        type="number"
+                        min="5"
+                        max="1440"
+                        step="5"
+                        value={config?.appointmentSyncInterval || 15}
+                        onChange={(e) => setConfig({ ...config!, appointmentSyncInterval: parseInt(e.target.value) || 15 })}
+                        disabled={!config?.enabled || !config?.syncAppointments}
+                        helperText="How often to poll for appointment changes (5-1440 minutes). Webhooks are used when available."
+                      />
+                    </div>
+
+                    <div>
+                      <Button
+                        onClick={async () => {
+                          if (!ghlData?.locationId) {
+                            setMessage({ type: 'error', text: 'Location ID is required' });
+                            return;
+                          }
+                          
+                          try {
+                            const response = await fetch(`/api/sync/appointments?action=full&locationId=${ghlData.locationId}`, { method: 'POST' });
+                            const data = await response.json();
+                            if (response.ok) {
+                              setMessage({ 
+                                type: 'success', 
+                                text: `Sync completed! ${data.synced || 0} appointments synced, ${data.errors || 0} errors.` 
+                              });
+                            } else {
+                              setMessage({ type: 'error', text: data.error || 'Failed to sync appointments' });
+                            }
+                          } catch (error) {
+                            setMessage({ type: 'error', text: 'Failed to sync appointments' });
+                          }
+                        }}
+                        disabled={!config?.enabled || !config?.syncAppointments || !config?.ghlCalendarId}
+                        variant="primary"
+                      >
+                        Sync All Appointments Now
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="tags">
+            <Card padding="lg">
+              <div className="space-y-6">
+                <div>
+                  <Input
+                    label="GHL Tags (comma-separated)"
+                    value={config?.ghlTags ? config.ghlTags.join(', ') : (config?.ghlTag || '')}
+                    onChange={(e) => {
+                      const tagsStr = e.target.value.trim();
+                      if (tagsStr) {
+                        const tags = tagsStr.split(',').map(t => t.trim()).filter(t => t.length > 0);
+                        setConfig({ ...config!, ghlTags: tags, ghlTag: tags[0] || undefined });
+                      } else {
+                        setConfig({ ...config!, ghlTags: [], ghlTag: undefined });
+                      }
+                    }}
+                    placeholder="e.g., Maid Central Quote, Quote Source, New Lead"
+                    disabled={!config?.enabled}
+                    helperText="Enter multiple tags separated by commas. These tags will be added to contacts created/updated by the integration. Leave empty to skip tagging."
+                  />
+                  {config?.ghlTags && config.ghlTags.length > 0 && (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {config.ghlTags.map((tag, index) => (
+                        <Badge key={index} variant="info" size="lg">
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <Alert variant="info">
+                  <p className="font-medium mb-2">Automatic Field Mapping:</p>
+                  <ul className="text-sm space-y-1 list-disc list-inside">
+                    <li><strong>Basic Fields:</strong> Name, email, phone, and address automatically map to GHL's native contact fields</li>
+                    <li><strong>All Other Fields:</strong> Automatically create custom fields with prefix <code className="bg-white/50 px-1 rounded">{config?.customFieldPrefix || 'maidcentral_quote_'}</code></li>
+                    <li><strong>No Manual Mapping:</strong> Everything happens automatically based on field names</li>
+                  </ul>
+                </Alert>
+              </div>
+            </Card>
+          </TabsContent>
+        </Tabs>
+
+        <Card padding="lg">
+          <Button 
+            onClick={saveConfig} 
+            variant="primary" 
+            disabled={saving || !config}
+            className="w-full"
+            size="lg"
+          >
+            {saving ? (
+              <>
+                <LoadingSpinner size="sm" className="mr-2" />
+                Saving...
+              </>
+            ) : (
+              'Save Settings'
+            )}
+          </Button>
+        </Card>
+      </div>
     </LocationGuard>
   );
 }
 
+export default function SettingsPage() {
+  return <SettingsPageContent />;
+}
