@@ -99,6 +99,38 @@ export async function GET(request: NextRequest) {
 
     const tokenData = await tokenResponse.json();
     console.log('[OAuth Callback] Token exchange successful. Token data keys:', Object.keys(tokenData));
+    console.log('[OAuth Callback] Full token response (sanitized):', {
+      hasAccessToken: !!tokenData.access_token,
+      accessTokenLength: tokenData.access_token?.length,
+      accessTokenPrefix: tokenData.access_token ? tokenData.access_token.substring(0, 30) + '...' : 'MISSING',
+      accessTokenSuffix: tokenData.access_token ? '...' + tokenData.access_token.substring(tokenData.access_token.length - 20) : 'MISSING',
+      hasRefreshToken: !!tokenData.refresh_token,
+      refreshTokenLength: tokenData.refresh_token?.length,
+      tokenType: tokenData.token_type,
+      expiresIn: tokenData.expires_in,
+      scope: tokenData.scope,
+      locationId: tokenData.locationId || tokenData.location_id,
+      userId: tokenData.userId || tokenData.user_id,
+      companyId: tokenData.companyId || tokenData.company_id,
+    });
+    
+    // Validate the token format immediately
+    if (tokenData.access_token) {
+      const tokenParts = tokenData.access_token.split('.');
+      console.log('[OAuth Callback] Token format check:', {
+        isJWT: tokenParts.length === 3,
+        parts: tokenParts.length,
+        tokenLength: tokenData.access_token.length,
+      });
+      
+      if (tokenParts.length !== 3) {
+        console.error('[OAuth Callback] ❌ CRITICAL: Token from GHL is not a valid JWT!');
+        console.error('[OAuth Callback] Token preview:', tokenData.access_token.substring(0, 100));
+        const errorUrl = new URL('/oauth-success', process.env.APP_BASE_URL || 'http://localhost:3001');
+        errorUrl.searchParams.set('error', `invalid_token_format: Token from GHL is not a valid JWT (${tokenParts.length} parts, expected 3)`);
+        return NextResponse.redirect(errorUrl.toString());
+      }
+    }
     
     // Get location ID from multiple possible sources
     // GHL may return it in different places depending on the OAuth flow
@@ -202,6 +234,34 @@ export async function GET(request: NextRequest) {
     }
 
     console.log('[OAuth Callback] ✅ Access token is valid JWT format');
+    
+    // Check if there's an existing token and compare
+    try {
+      const { getGHLOAuthToken } = await import('@/lib/db');
+      const existingToken = await getGHLOAuthToken(finalLocationId);
+      if (existingToken?.accessToken) {
+        const isSameToken = existingToken.accessToken === accessToken;
+        console.log('[OAuth Callback] Existing token comparison:', {
+          hasExistingToken: true,
+          isSameToken,
+          existingTokenLength: existingToken.accessToken.length,
+          newTokenLength: accessToken.length,
+          existingTokenPrefix: existingToken.accessToken.substring(0, 30) + '...',
+          newTokenPrefix: accessToken.substring(0, 30) + '...',
+        });
+        
+        if (isSameToken) {
+          console.warn('[OAuth Callback] ⚠️  WARNING: New token is identical to existing token! This might indicate GHL is returning the same token.');
+        } else {
+          console.log('[OAuth Callback] ✅ New token is different from existing token - will overwrite');
+        }
+      } else {
+        console.log('[OAuth Callback] No existing token found - will create new one');
+      }
+    } catch (compareError) {
+      console.warn('[OAuth Callback] Could not compare with existing token:', compareError);
+      // Don't fail the flow if comparison fails
+    }
 
     // Note: We don't use returnUrl anymore because OAuth is always installed via marketplace or direct link
     // The callback will redirect to the setup page to complete configuration
@@ -250,6 +310,29 @@ export async function GET(request: NextRequest) {
         console.log('[OAuth Callback] Stored token locationId:', storedToken.locationId);
         console.log('[OAuth Callback] Stored token has access token:', !!storedToken.accessToken);
         console.log('[OAuth Callback] Stored token access token length:', storedToken.accessToken.length);
+        console.log('[OAuth Callback] Stored token prefix:', storedToken.accessToken.substring(0, 30) + '...');
+        console.log('[OAuth Callback] Original token prefix:', accessToken.substring(0, 30) + '...');
+        console.log('[OAuth Callback] Tokens match:', storedToken.accessToken === accessToken);
+        
+        // Test the stored token immediately to see if it works
+        try {
+          const testResponse = await fetch(`https://services.leadconnectorhq.com/locations/${finalLocationId}`, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${storedToken.accessToken}`,
+              'Version': '2021-07-28',
+            },
+          });
+          
+          if (testResponse.ok) {
+            console.log('[OAuth Callback] ✅ Token test: Stored token works! Status:', testResponse.status);
+          } else {
+            const errorData = await testResponse.json().catch(() => ({ error: 'Unknown' }));
+            console.error('[OAuth Callback] ❌ Token test: Stored token FAILED! Status:', testResponse.status, 'Error:', errorData);
+          }
+        } catch (testError) {
+          console.error('[OAuth Callback] ❌ Token test: Exception during test:', testError);
+        }
       } else {
         console.warn('[OAuth Callback] ⚠️  Secondary verification: Token not immediately retrievable (may be transaction delay)');
         console.warn('[OAuth Callback] This is not necessarily an error - the token was confirmed in the RETURNING clause');
