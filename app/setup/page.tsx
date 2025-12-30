@@ -60,7 +60,7 @@ function SetupPageContent() {
     const success = searchParams.get('success');
     const error = searchParams.get('error');
     if (success === 'oauth_installed') {
-      setMessage({ type: 'success', text: 'OAuth installation successful! The app is now connected to your GoHighLevel location.' });
+      setMessage({ type: 'success', text: 'OAuth installation successful! The app is now connected to your CRM location.' });
       fetchOAuthStatus();
     } else if (error) {
       setMessage({ type: 'error', text: `OAuth error: ${decodeURIComponent(error)}` });
@@ -124,7 +124,7 @@ function SetupPageContent() {
     e.preventDefault();
     
     if (!ghlData?.locationId) {
-      setMessage({ type: 'error', text: 'Location ID is required. Please ensure you are accessing this app through GoHighLevel.' });
+      setMessage({ type: 'error', text: 'Location ID is required. Please ensure you are accessing this app through CRM.' });
       return;
     }
     
@@ -165,7 +165,7 @@ function SetupPageContent() {
           </Button>
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Setup & Configuration</h1>
-            <p className="text-gray-600 mt-1">Configure your Maid Central and GoHighLevel integrations</p>
+            <p className="text-gray-600 mt-1">Configure your MaidCentral and CRM integrations</p>
           </div>
         </div>
 
@@ -178,15 +178,15 @@ function SetupPageContent() {
           </Alert>
         )}
 
-        {/* Maid Central Credentials */}
+        {/* MaidCentral Credentials */}
         <Card padding="lg">
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2 bg-primary-100 rounded-lg">
               <KeyIcon className="w-6 h-6 text-primary-600" />
             </div>
             <div>
-              <h2 className="text-xl font-semibold text-gray-900">Maid Central API Credentials</h2>
-              <p className="text-sm text-gray-500">Get your API credentials from Maid Central</p>
+              <h2 className="text-xl font-semibold text-gray-900">MaidCentral API Credentials</h2>
+              <p className="text-sm text-gray-500">Get your API credentials from MaidCentral</p>
             </div>
           </div>
           
@@ -220,7 +220,7 @@ function SetupPageContent() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
-              placeholder="Enter your Maid Central API username"
+              placeholder="Enter your MaidCentral API username"
             />
 
             <Input
@@ -229,7 +229,7 @@ function SetupPageContent() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              placeholder="Enter your Maid Central API password"
+              placeholder="Enter your MaidCentral API password"
             />
 
             <Button type="submit" variant="primary" disabled={saving} className="w-full">
@@ -245,14 +245,14 @@ function SetupPageContent() {
           </form>
         </Card>
 
-        {/* GoHighLevel OAuth */}
+        {/* CRM OAuth */}
         <Card padding="lg">
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2 bg-accent-100 rounded-lg">
               <CloudIcon className="w-6 h-6 text-accent-600" />
             </div>
             <div>
-              <h2 className="text-xl font-semibold text-gray-900">GoHighLevel Marketplace App (OAuth)</h2>
+              <h2 className="text-xl font-semibold text-gray-900">CRM Marketplace App (OAuth)</h2>
               <p className="text-sm text-gray-500">Install the app via OAuth for secure authentication</p>
             </div>
           </div>

@@ -31,7 +31,7 @@ function OAuthSuccessContent() {
       setMessage(fullError);
     } else if (success === 'oauth_installed') {
       setStatus('success');
-      setMessage('OAuth installation successful! The app is now connected to your GoHighLevel location.');
+      setMessage('OAuth installation successful! The app is now connected to your CRM location.');
     } else {
       setStatus('success');
       setMessage('OAuth installation completed successfully.');
@@ -110,7 +110,7 @@ function OAuthSuccessContent() {
               </Link>
             </div>
             <p style={{ marginTop: '1rem', fontSize: '0.85rem', color: '#999' }}>
-              You can now configure your Maid Central credentials and integration settings.
+              You can now configure your MaidCentral credentials and integration settings.
             </p>
           </div>
         )}
@@ -141,7 +141,7 @@ function OAuthSuccessContent() {
                   Common Fix for "invalid_request" Error:
                 </strong>
                 <ol style={{ margin: '0.5rem 0', paddingLeft: '1.5rem', fontSize: '0.9rem', color: '#856404' }}>
-                  <li style={{ marginBottom: '0.5rem' }}>Go to your <strong>GHL Marketplace app settings</strong></li>
+                  <li style={{ marginBottom: '0.5rem' }}>Go to your <strong>CRM Marketplace app settings</strong></li>
                   <li style={{ marginBottom: '0.5rem' }}>
                     Verify the <strong>Redirect URI</strong> is EXACTLY:
                     <code style={{ 
@@ -157,7 +157,7 @@ function OAuthSuccessContent() {
                     </code>
                   </li>
                   <li style={{ marginBottom: '0.5rem' }}>It must match <strong>character-for-character</strong> (no trailing slash, exact path)</li>
-                  <li style={{ marginBottom: '0.5rem' }}>Save the settings in GHL Marketplace</li>
+                  <li style={{ marginBottom: '0.5rem' }}>Save the settings in CRM Marketplace</li>
                   <li>Try installing again</li>
                 </ol>
                 <p style={{ marginTop: '0.75rem', fontSize: '0.85rem', color: '#856404' }}>

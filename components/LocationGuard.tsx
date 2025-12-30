@@ -24,7 +24,7 @@ export function LocationGuard({ children, fallback }: LocationGuardProps) {
         <Card className="p-8 text-center">
           <LoadingSpinner size="lg" className="mx-auto mb-4" />
           <h2 className="text-lg font-semibold text-gray-900 mb-2">Loading...</h2>
-          <p className="text-sm text-gray-500">Waiting for location context from GoHighLevel...</p>
+          <p className="text-sm text-gray-500">Waiting for location context from CRM...</p>
         </Card>
       </div>
     );
@@ -37,10 +37,10 @@ export function LocationGuard({ children, fallback }: LocationGuardProps) {
           <Card className="max-w-md w-full">
             <Alert variant="error" title="Location Context Required">
               <p className="mb-4">
-                {error || 'This app must be loaded within a GoHighLevel iframe to access location-specific data.'}
+                {error || 'This app must be loaded within a CRM iframe to access location-specific data.'}
               </p>
               <p className="text-sm text-gray-600">
-                Please ensure you are accessing this app through the GoHighLevel marketplace app installation.
+                Please ensure you are accessing this app through the CRM marketplace app installation.
               </p>
             </Alert>
           </Card>

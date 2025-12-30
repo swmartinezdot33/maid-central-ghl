@@ -78,7 +78,7 @@ export function OAuthGuard({ children, fallback }: OAuthGuardProps) {
           <Card className="max-w-md w-full">
             <Alert variant="error" title="Location Context Required">
               <p className="mb-4">
-                This app must be loaded within a GoHighLevel iframe to access location-specific data.
+                This app must be loaded within a CRM iframe to access location-specific data.
               </p>
             </Alert>
           </Card>

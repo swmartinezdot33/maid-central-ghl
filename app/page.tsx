@@ -155,10 +155,10 @@ export default function Home() {
       <OAuthGuard>
         <div className="max-w-7xl mx-auto space-y-6">
           {/* Hero Section */}
-          <div className="bg-gradient-to-br from-primary-500 via-primary-600 to-accent-500 rounded-2xl p-8 text-white">
+          <div className="bg-gradient-to-br from-primary-500 via-primary-600 to-primary-700 rounded-2xl p-8 text-white">
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-3xl font-bold mb-2">Maid Central → GoHighLevel Integration</h1>
+                <h1 className="text-3xl font-bold mb-2">MaidCentral → CRM Integration</h1>
                 <p className="text-primary-100 text-lg">Sync quotes, customers, and appointments automatically</p>
                 {ghlData?.locationId && (
                   <div className="mt-4 flex items-center gap-2">
@@ -216,7 +216,7 @@ export default function Home() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <Card hover padding="lg">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-medium text-gray-500">GoHighLevel</h3>
+                    <h3 className="text-sm font-medium text-gray-500">CRM</h3>
                     {status?.ghlConnected ? (
                       <CheckCircleIcon className="w-6 h-6 text-success-600" />
                     ) : (
@@ -235,7 +235,7 @@ export default function Home() {
 
                 <Card hover padding="lg">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-medium text-gray-500">Maid Central</h3>
+                    <h3 className="text-sm font-medium text-gray-500">MaidCentral</h3>
                     {status?.config ? (
                       <CheckCircleIcon className="w-6 h-6 text-success-600" />
                     ) : (
@@ -419,7 +419,7 @@ export default function Home() {
               <Card padding="lg">
                 <h2 className="text-xl font-semibold text-gray-900 mb-4">How to Sync Quotes</h2>
                 <p className="text-gray-600 mb-4">
-                  Since Maid Central doesn't support webhooks, you can sync quotes manually:
+                  Since MaidCentral doesn't support webhooks, you can sync quotes manually:
                 </p>
                 <div className="bg-gray-50 rounded-lg p-4 mb-4">
                   <p className="text-sm text-gray-700 mb-2">

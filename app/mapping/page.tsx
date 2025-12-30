@@ -70,7 +70,7 @@ export default function MappingPage() {
         setMcFields(fields);
       } catch (error) {
         console.error('Error loading Maid Central fields:', error);
-        setMessage({ type: 'error', text: 'Failed to load Maid Central fields. Please ensure credentials are configured.' });
+        setMessage({ type: 'error', text: 'Failed to load MaidCentral fields. Please ensure credentials are configured.' });
       }
 
       const locationIdToUse = configData.config?.ghlLocationId || locationId;
@@ -95,7 +95,7 @@ export default function MappingPage() {
         } catch (error) {
           console.error('Error loading GHL fields:', error);
           const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-          setMessage({ type: 'error', text: `Failed to load GoHighLevel fields: ${errorMsg}` });
+          setMessage({ type: 'error', text: `Failed to load CRM fields: ${errorMsg}` });
         }
       }
     } catch (error) {
@@ -214,7 +214,7 @@ export default function MappingPage() {
           </Button>
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Field Mapping</h1>
-            <p className="text-gray-600 mt-1">Map Maid Central quote fields to GoHighLevel contact fields</p>
+            <p className="text-gray-600 mt-1">Map MaidCentral quote fields to CRM contact fields</p>
           </div>
         </div>
 
@@ -246,9 +246,9 @@ export default function MappingPage() {
 
         {/* Tag Configuration */}
         <Card padding="lg">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">GHL Tag Configuration</h2>
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">CRM Tag Configuration</h2>
           <p className="text-sm text-gray-600 mb-4">
-            When a new quote is synced, this tag will be automatically added to the contact in GoHighLevel.
+            When a new quote is synced, this tag will be automatically added to the contact in CRM.
           </p>
           <Input
             label="Tag Name"
@@ -257,8 +257,8 @@ export default function MappingPage() {
               const updatedConfig = { ...config, ghlTag: e.target.value };
               setConfig(updatedConfig as Config);
             }}
-            placeholder="e.g., Maid Central Quote"
-            helperText="Leave empty to skip tagging. The tag will be created in GHL if it doesn't exist."
+            placeholder="e.g., MaidCentral Quote"
+            helperText="Leave empty to skip tagging. The tag will be created in CRM if it doesn't exist."
           />
         </Card>
 
@@ -287,7 +287,7 @@ export default function MappingPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Maid Central Field
+                        MaidCentral Field
                       </label>
                       <Select
                         options={[
@@ -300,8 +300,8 @@ export default function MappingPage() {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        GoHighLevel Field
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                        CRM Field
                       </label>
                       <div className="flex gap-2">
                         <Select

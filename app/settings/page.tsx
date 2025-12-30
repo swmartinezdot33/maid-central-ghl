@@ -181,7 +181,7 @@ function SettingsPageContent() {
           </Button>
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Integration Settings</h1>
-            <p className="text-gray-600 mt-1">Configure how data flows from Maid Central to GoHighLevel</p>
+            <p className="text-gray-600 mt-1">Configure how data flows from MaidCentral to CRM</p>
           </div>
         </div>
 
@@ -198,7 +198,7 @@ function SettingsPageContent() {
         <Card padding="lg">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-1">GoHighLevel Connection</h3>
+              <h3 className="text-lg font-semibold text-gray-900 mb-1">CRM Connection</h3>
               <p className="text-sm text-gray-500">OAuth connection status for this location</p>
             </div>
             <div className="flex items-center gap-3">
@@ -240,7 +240,7 @@ function SettingsPageContent() {
                   <div className="flex-1">
                     <Toggle
                       label="Sync Quotes"
-                      description="When enabled, new quotes from Maid Central will automatically create contacts and opportunities in GHL"
+                      description="When enabled, new quotes from MaidCentral will automatically create contacts and opportunities in CRM"
                       checked={config?.syncQuotes !== false}
                       onChange={(e) => setConfig({ ...config!, syncQuotes: e.target.checked })}
                       disabled={!config?.enabled}
@@ -252,7 +252,7 @@ function SettingsPageContent() {
                   <div className="flex-1">
                     <Toggle
                       label="Sync Customers"
-                      description="When enabled, customer updates from Maid Central will sync to GHL"
+                      description="When enabled, customer updates from MaidCentral will sync to CRM"
                       checked={config?.syncCustomers || false}
                       onChange={(e) => setConfig({ ...config!, syncCustomers: e.target.checked })}
                       disabled={!config?.enabled}
@@ -264,7 +264,7 @@ function SettingsPageContent() {
                   <div className="flex-1">
                     <Toggle
                       label="Create Opportunities"
-                      description="When enabled, an opportunity/deal will be created in GHL for each quote synced"
+                      description="When enabled, an opportunity/deal will be created in CRM for each quote synced"
                       checked={config?.createOpportunities !== false}
                       onChange={(e) => setConfig({ ...config!, createOpportunities: e.target.checked })}
                       disabled={!config?.enabled || !config?.syncQuotes}
@@ -276,7 +276,7 @@ function SettingsPageContent() {
                   <div className="flex-1">
                     <Toggle
                       label="Auto-Create Custom Fields"
-                      description="Automatically create custom fields in GHL for Maid Central data that doesn't map to native fields"
+                      description="Automatically create custom fields in CRM for MaidCentral data that doesn't map to native fields"
                       checked={config?.autoCreateFields !== false}
                       onChange={(e) => setConfig({ ...config!, autoCreateFields: e.target.checked })}
                       disabled={!config?.enabled}
@@ -294,7 +294,7 @@ function SettingsPageContent() {
                   <div className="flex-1">
                     <Toggle
                       label="Sync Appointments"
-                      description="When enabled, appointments will sync bidirectionally between Maid Central and GoHighLevel calendars"
+                      description="When enabled, appointments will sync bidirectionally between MaidCentral and CRM calendars"
                       checked={config?.syncAppointments || false}
                       onChange={(e) => setConfig({ ...config!, syncAppointments: e.target.checked })}
                       disabled={!config?.enabled}
@@ -305,8 +305,8 @@ function SettingsPageContent() {
                 {config?.syncAppointments && (
                   <>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        GHL Calendar
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                        CRM Calendar
                       </label>
                       {loadingCalendars ? (
                         <div className="flex items-center gap-2 p-4 bg-gray-50 rounded-lg">
@@ -318,7 +318,7 @@ function SettingsPageContent() {
                           <p className="mb-2"><strong>No calendars found.</strong></p>
                           <p className="text-sm mb-2">This could mean:</p>
                           <ul className="text-sm list-disc list-inside space-y-1">
-                            <li>No calendars exist in your GoHighLevel location</li>
+                            <li>No calendars exist in your CRM location</li>
                             <li>The calendar API endpoint may need adjustment</li>
                             <li>Check the browser console and server logs for API errors</li>
                           </ul>
@@ -343,7 +343,7 @@ function SettingsPageContent() {
                         onChange={(e) => setConfig({ ...config!, ghlCalendarId: e.target.value || undefined })}
                         disabled={!config?.enabled || !config?.syncAppointments}
                         placeholder="e.g., abc123xyz"
-                        helperText="Enter the calendar ID if you know it from your GHL account"
+                        helperText="Enter the calendar ID if you know it from your CRM account"
                       />
                     </div>
 
@@ -352,8 +352,8 @@ function SettingsPageContent() {
                         label="Conflict Resolution Strategy"
                         options={[
                           { value: 'timestamp', label: 'Most Recent Wins (timestamp-based)' },
-                          { value: 'maid_central_wins', label: 'Maid Central Always Wins' },
-                          { value: 'ghl_wins', label: 'GoHighLevel Always Wins' },
+                          { value: 'maid_central_wins', label: 'MaidCentral Always Wins' },
+                          { value: 'ghl_wins', label: 'CRM Always Wins' },
                         ]}
                         value={config?.appointmentConflictResolution || 'timestamp'}
                         onChange={(e) => setConfig({ 
@@ -419,7 +419,7 @@ function SettingsPageContent() {
               <div className="space-y-6">
                 <div>
                   <Input
-                    label="GHL Tags (comma-separated)"
+                    label="CRM Tags (comma-separated)"
                     value={config?.ghlTags ? config.ghlTags.join(', ') : (config?.ghlTag || '')}
                     onChange={(e) => {
                       const tagsStr = e.target.value.trim();
@@ -430,7 +430,7 @@ function SettingsPageContent() {
                         setConfig({ ...config!, ghlTags: [], ghlTag: undefined });
                       }
                     }}
-                    placeholder="e.g., Maid Central Quote, Quote Source, New Lead"
+                    placeholder="e.g., MaidCentral Quote, Quote Source, New Lead"
                     disabled={!config?.enabled}
                     helperText="Enter multiple tags separated by commas. These tags will be added to contacts created/updated by the integration. Leave empty to skip tagging."
                   />
@@ -448,7 +448,7 @@ function SettingsPageContent() {
                 <Alert variant="info">
                   <p className="font-medium mb-2">Automatic Field Mapping:</p>
                   <ul className="text-sm space-y-1 list-disc list-inside">
-                    <li><strong>Basic Fields:</strong> Name, email, phone, and address automatically map to GHL's native contact fields</li>
+                    <li><strong>Basic Fields:</strong> Name, email, phone, and address automatically map to CRM's native contact fields</li>
                     <li><strong>All Other Fields:</strong> Automatically create custom fields with prefix <code className="bg-white/50 px-1 rounded">{config?.customFieldPrefix || 'maidcentral_quote_'}</code></li>
                     <li><strong>No Manual Mapping:</strong> Everything happens automatically based on field names</li>
                   </ul>

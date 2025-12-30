@@ -90,7 +90,7 @@ export default function QuotesPage() {
           </Button>
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Quotes</h1>
-            <p className="text-gray-600 mt-1">Look up and sync quotes from Maid Central</p>
+            <p className="text-gray-600 mt-1">Look up and sync quotes from MaidCentral</p>
           </div>
         </div>
 
@@ -139,7 +139,7 @@ export default function QuotesPage() {
                     Syncing...
                   </>
                 ) : (
-                  'Sync to GHL'
+                  'Sync to CRM'
                 )}
               </Button>
             </div>

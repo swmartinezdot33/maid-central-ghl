@@ -94,7 +94,7 @@ export default function CustomersPage() {
           </Button>
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Customers</h1>
-            <p className="text-gray-600 mt-1">Look up and sync customers from Maid Central</p>
+            <p className="text-gray-600 mt-1">Look up and sync customers from MaidCentral</p>
           </div>
         </div>
 
@@ -143,7 +143,7 @@ export default function CustomersPage() {
                     Syncing...
                   </>
                 ) : (
-                  'Sync to GHL'
+                  'Sync to CRM'
                 )}
               </Button>
             </div>

@@ -5,8 +5,8 @@ import { Navigation } from '@/components/Navigation'
 import { Header } from '@/components/Header'
 
 export const metadata: Metadata = {
-  title: 'Maid Central → GoHighLevel Integration',
-  description: 'Sync quotes from Maid Central to GoHighLevel',
+  title: 'MaidCentral → CRM Integration',
+  description: 'Sync quotes from MaidCentral to CRM',
 }
 
 export default function RootLayout({
