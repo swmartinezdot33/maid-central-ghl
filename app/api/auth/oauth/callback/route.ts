@@ -80,6 +80,13 @@ export async function GET(request: NextRequest) {
     console.log('[OAuth Callback] Exchanging code for token...');
     console.log('[OAuth Callback] Token endpoint: https://services.leadconnectorhq.com/oauth/token');
     console.log('[OAuth Callback] Using form-urlencoded content type');
+    console.log('[OAuth Callback] Token exchange request params:', {
+      grant_type: tokenParams.get('grant_type'),
+      code: tokenParams.get('code') ? `${tokenParams.get('code')?.substring(0, 20)}...` : 'MISSING',
+      client_id: tokenParams.get('client_id') ? `${tokenParams.get('client_id')?.substring(0, 20)}...` : 'MISSING',
+      client_secret: tokenParams.get('client_secret') ? '***SET***' : 'MISSING',
+      redirect_uri: tokenParams.get('redirect_uri'),
+    });
     
     const tokenResponse = await fetch('https://services.leadconnectorhq.com/oauth/token', {
       method: 'POST',
@@ -89,11 +96,22 @@ export async function GET(request: NextRequest) {
       body: tokenParams.toString(),
     });
 
+    console.log('[OAuth Callback] Token exchange response status:', tokenResponse.status, tokenResponse.statusText);
+    console.log('[OAuth Callback] Token exchange response headers:', Object.fromEntries(tokenResponse.headers.entries()));
+
     if (!tokenResponse.ok) {
-      const errorData = await tokenResponse.json().catch(() => ({ error: 'Unknown error' }));
-      console.error('[OAuth Callback] Token exchange error:', errorData);
+      const errorText = await tokenResponse.text();
+      console.error('[OAuth Callback] Token exchange error - Response body:', errorText);
+      let errorData;
+      try {
+        errorData = JSON.parse(errorText);
+      } catch {
+        errorData = { error: 'Unknown error', raw: errorText };
+      }
+      console.error('[OAuth Callback] Token exchange error parsed:', errorData);
       const errorUrl = new URL('/oauth-success', process.env.APP_BASE_URL || 'http://localhost:3001');
       errorUrl.searchParams.set('error', errorData.error || 'token_exchange_failed');
+      errorUrl.searchParams.set('error_description', errorData.error_description || errorData.message || '');
       return NextResponse.redirect(errorUrl.toString());
     }
 
@@ -316,22 +334,48 @@ export async function GET(request: NextRequest) {
         
         // Test the stored token immediately to see if it works
         try {
+          console.log('[OAuth Callback] Testing stored token with GHL API...');
+          console.log('[OAuth Callback] Test request:', {
+            url: `https://services.leadconnectorhq.com/locations/${finalLocationId}`,
+            method: 'GET',
+            authorizationHeader: `Bearer ${storedToken.accessToken.substring(0, 30)}...`,
+            tokenLength: storedToken.accessToken.length,
+          });
+          
           const testResponse = await fetch(`https://services.leadconnectorhq.com/locations/${finalLocationId}`, {
             method: 'GET',
             headers: {
               'Authorization': `Bearer ${storedToken.accessToken}`,
               'Version': '2021-07-28',
+              'Content-Type': 'application/json',
             },
           });
           
+          console.log('[OAuth Callback] Test response status:', testResponse.status, testResponse.statusText);
+          console.log('[OAuth Callback] Test response headers:', Object.fromEntries(testResponse.headers.entries()));
+          
           if (testResponse.ok) {
+            const testData = await testResponse.json().catch(() => null);
             console.log('[OAuth Callback] ✅ Token test: Stored token works! Status:', testResponse.status);
+            console.log('[OAuth Callback] Test response data keys:', testData ? Object.keys(testData) : 'no data');
           } else {
-            const errorData = await testResponse.json().catch(() => ({ error: 'Unknown' }));
-            console.error('[OAuth Callback] ❌ Token test: Stored token FAILED! Status:', testResponse.status, 'Error:', errorData);
+            const errorText = await testResponse.text();
+            console.error('[OAuth Callback] ❌ Token test: Stored token FAILED! Status:', testResponse.status);
+            console.error('[OAuth Callback] Test error response body:', errorText);
+            let errorData;
+            try {
+              errorData = JSON.parse(errorText);
+            } catch {
+              errorData = { error: 'Unknown', raw: errorText };
+            }
+            console.error('[OAuth Callback] Test error parsed:', errorData);
           }
         } catch (testError) {
           console.error('[OAuth Callback] ❌ Token test: Exception during test:', testError);
+          console.error('[OAuth Callback] Test error details:', {
+            message: testError instanceof Error ? testError.message : String(testError),
+            stack: testError instanceof Error ? testError.stack : undefined,
+          });
         }
       } else {
         console.warn('[OAuth Callback] ⚠️  Secondary verification: Token not immediately retrievable (may be transaction delay)');
