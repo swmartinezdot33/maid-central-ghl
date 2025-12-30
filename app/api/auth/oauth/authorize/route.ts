@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
     authUrl.searchParams.set('prompt', 'consent');
     
     // Scopes must match exactly what's configured in GHL Marketplace app settings
-    // GHL expects scopes joined with + signs, not spaces
+    // GHL expects scopes joined with spaces (URLSearchParams will handle encoding)
     // Using .readonly format as configured in GHL Marketplace app
     const scopes = [
       'locations.readonly',
@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
       'calendars/resources.readonly',
       'opportunities.readonly',
       'opportunities.write'
-    ].join('+'); // Use + instead of space to match GHL format
+    ].join(' '); // Use space - URLSearchParams will encode it properly
     authUrl.searchParams.set('scope', scopes);
     
     console.log('[OAuth Authorize] OAuth URL Parameters:');
