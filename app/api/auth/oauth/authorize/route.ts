@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   try {
     const clientId = process.env.GHL_CLIENT_ID;
     const redirectUri = process.env.GHL_REDIRECT_URI || `${process.env.APP_BASE_URL || 'http://localhost:3001'}/api/auth/oauth/callback`;
-    const baseUrl = process.env.APP_BASE_URL || 'http://localhost:3001';
+    const appBaseUrl = process.env.APP_BASE_URL || 'http://localhost:3001';
 
     if (!clientId) {
       return NextResponse.json(
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     console.log('[OAuth Authorize] Initiating OAuth flow');
     console.log('[OAuth Authorize] Client ID:', clientId ? `${clientId.substring(0, 10)}...${clientId.substring(clientId.length - 4)}` : 'MISSING');
     console.log('[OAuth Authorize] Redirect URI:', redirectUri);
-    console.log('[OAuth Authorize] Base URL:', baseUrl);
+    console.log('[OAuth Authorize] Base URL:', appBaseUrl);
     console.log('[OAuth Authorize] Location ID (hint):', locationId || 'none');
     console.log('[OAuth Authorize] Environment check:');
     console.log('[OAuth Authorize]   - APP_BASE_URL:', process.env.APP_BASE_URL || 'NOT SET');
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
     authUrl.searchParams.set('prompt', 'consent');
     
     // Scopes must match exactly what's configured in GHL Marketplace app settings
-    // GHL expects scopes joined with spaces (URLSearchParams will handle encoding)
+    // GHL expects scopes joined with + signs (not spaces or %20)
     // Using .readonly format as configured in GHL Marketplace app
     const scopes = [
       'locations.readonly',
@@ -66,8 +66,7 @@ export async function GET(request: NextRequest) {
       'calendars/resources.readonly',
       'opportunities.readonly',
       'opportunities.write'
-    ].join(' '); // Use space - URLSearchParams will encode it properly
-    authUrl.searchParams.set('scope', scopes);
+    ].join('+'); // Use + signs - GHL expects this format
     
     console.log('[OAuth Authorize] OAuth URL Parameters:');
     console.log('[OAuth Authorize]   - response_type: code');
@@ -97,13 +96,50 @@ export async function GET(request: NextRequest) {
       }
     }
     
+    // Manually set scope to avoid URLSearchParams encoding + as %2B
+    // We need to construct the URL manually to preserve + signs
+    // Encode each scope individually (to handle / characters) then join with + signs
+    const encodedScopes = [
+      'locations.readonly',
+      'contacts.readonly',
+      'contacts.write',
+      'calendars.readonly',
+      'calendars.write',
+      'calendars/events.readonly',
+      'calendars/events.write',
+      'calendars/groups.readonly',
+      'calendars/resources.write',
+      'calendars/groups.write',
+      'calendars/resources.readonly',
+      'opportunities.readonly',
+      'opportunities.write'
+    ].map(scope => encodeURIComponent(scope)).join('+');
+    
+    const oauthBaseUrl = authUrl.origin + authUrl.pathname;
+    const params = new URLSearchParams();
+    params.set('response_type', 'code');
+    params.set('client_id', clientId);
+    params.set('redirect_uri', redirectUri);
+    params.set('version_id', versionId);
+    params.set('prompt', 'consent');
+    if (Object.keys(stateData).length > 0) {
+      try {
+        const stateString = JSON.stringify(stateData);
+        const stateBase64 = Buffer.from(stateString).toString('base64');
+        params.set('state', stateBase64);
+      } catch (e) {
+        params.set('state', JSON.stringify(stateData));
+      }
+    }
+    
+    // Build final URL with scope parameter manually added (with + signs preserved)
+    const finalAuthUrl = `${oauthBaseUrl}?${params.toString()}&scope=${encodedScopes}`;
+    
     // Note: GHL's chooselocation endpoint should automatically show location selection
     // If it's not showing, it might be because:
     // 1. User only has one location (auto-selected)
     // 2. Redirect URI mismatch
     // 3. App distribution settings in GHL marketplace
-
-    const finalAuthUrl = authUrl.toString();
     console.log('[OAuth Authorize] Redirecting to:', finalAuthUrl.replace(clientId, 'CLIENT_ID_HIDDEN'));
     console.log('[OAuth Authorize] Full redirect URI:', redirectUri);
     console.log('[OAuth Authorize] State data:', stateData);
@@ -123,6 +159,9 @@ export async function GET(request: NextRequest) {
       console.warn('[OAuth Authorize] Actual:', redirectUri);
       console.warn('[OAuth Authorize] This will cause OAuth to fail with invalid_request error');
     }
+    
+    // Log the final URL for debugging (with sensitive data hidden)
+    console.log('[OAuth Authorize] Final OAuth URL (sanitized):', finalAuthUrl.replace(clientId, 'CLIENT_ID_HIDDEN'));
     
     console.log('[OAuth Authorize] Final OAuth URL (client_id hidden):', finalAuthUrl.replace(clientId, 'CLIENT_ID_HIDDEN'));
     console.log('[OAuth Authorize] Redirecting to GHL OAuth...');

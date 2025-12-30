@@ -20,11 +20,6 @@ export async function GET(request: NextRequest) {
   const versionId = clientId.includes('-') ? clientId.split('-')[0] : clientId;
 
   // Build the exact OAuth URL that will be used
-  const authUrl = new URL('https://marketplace.gohighlevel.com/oauth/chooselocation');
-  authUrl.searchParams.set('response_type', 'code');
-  authUrl.searchParams.set('client_id', clientId);
-  authUrl.searchParams.set('redirect_uri', redirectUri);
-  authUrl.searchParams.set('version_id', versionId);
   // GHL expects scopes joined with + signs, not spaces
   // Using .readonly format as configured in GHL Marketplace app
   const scopes = [
@@ -41,13 +36,25 @@ export async function GET(request: NextRequest) {
     'calendars/resources.readonly',
     'opportunities.readonly',
     'opportunities.write'
-  ].join('+'); // Use + instead of space to match GHL format
-  authUrl.searchParams.set('scope', scopes);
-
-  const generatedUrl = authUrl.toString();
+  ];
+  
+  // Encode each scope individually (to handle / characters) then join with + signs
+  const encodedScopes = scopes.map(scope => encodeURIComponent(scope)).join('+');
+  
+  // Build URL manually to preserve + signs in scope parameter
+  const baseUrl = 'https://marketplace.gohighlevel.com/oauth/chooselocation';
+  const params = new URLSearchParams();
+  params.set('response_type', 'code');
+  params.set('client_id', clientId);
+  params.set('redirect_uri', redirectUri);
+  params.set('version_id', versionId);
+  params.set('prompt', 'consent');
+  
+  // Build final URL with scope parameter manually added (with + signs preserved)
+  const generatedUrl = `${baseUrl}?${params.toString()}&scope=${encodedScopes}`;
   
   // Expected URL from GHL Marketplace (for comparison)
-  const expectedUrl = `https://marketplace.gohighlevel.com/oauth/chooselocation?response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&client_id=${clientId}&scope=${encodeURIComponent(scopes)}&version_id=${versionId}`;
+  const expectedUrl = `https://marketplace.gohighlevel.com/oauth/chooselocation?response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&client_id=${clientId}&scope=${encodedScopes}&version_id=${versionId}`;
   
   return NextResponse.json({
     generatedUrl,
@@ -58,8 +65,8 @@ export async function GET(request: NextRequest) {
       client_id: clientId,
       version_id: versionId,
       redirect_uri: redirectUri,
-      scope: scopes,
-      scopeEncoded: encodeURIComponent(scopes),
+      scope: scopes.join('+'),
+      scopeEncoded: encodedScopes,
     },
     comparison: {
       generatedUrlLength: generatedUrl.length,
