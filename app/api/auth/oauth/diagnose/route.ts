@@ -8,16 +8,17 @@ import { getLocationIdFromRequest } from '@/lib/request-utils';
  * Diagnoses OAuth token issues by checking format, expiration, and making a test API call
  */
 export async function GET(request: NextRequest) {
+  const locationId = getLocationIdFromRequest(request) || 
+                    request.nextUrl.searchParams.get('locationId');
+  
+  if (!locationId) {
+    return NextResponse.json(
+      { error: 'Location ID is required' },
+      { status: 400 }
+    );
+  }
+  
   try {
-    const locationId = getLocationIdFromRequest(request) || 
-                      request.nextUrl.searchParams.get('locationId');
-    
-    if (!locationId) {
-      return NextResponse.json(
-        { error: 'Location ID is required' },
-        { status: 400 }
-      );
-    }
     
     console.log('[OAuth Diagnose] Diagnosing token for locationId:', locationId);
     
