@@ -45,6 +45,9 @@ export async function GET(request: NextRequest) {
     authUrl.searchParams.set('redirect_uri', redirectUri);
     // CRITICAL: version_id is required for marketplace apps
     authUrl.searchParams.set('version_id', versionId);
+    // Force re-authorization even if app is already installed
+    // This ensures we get a fresh token and the callback is called
+    authUrl.searchParams.set('prompt', 'consent');
     
     // Scopes must match exactly what's configured in GHL Marketplace app settings
     // Based on GHL Marketplace settings, using readonly variants and full scope list
