@@ -82,13 +82,11 @@ export class GHLAPI {
         return null;
       }
       
-      // Check if token is expired and needs refresh
-      if (oauthToken.expiresAt && Date.now() >= oauthToken.expiresAt) {
-        if (oauthToken.refreshToken) {
-          // TODO: Implement token refresh
-          console.warn('[GHL API] OAuth token expired, refresh not yet implemented');
-        }
-        return null;
+      // Don't check expiration - if token exists, use it
+      // If it's actually expired, the API call will return 401 and we'll handle it gracefully
+      // TODO: Implement token refresh when refreshToken is available
+      if (oauthToken.refreshToken && oauthToken.expiresAt && Date.now() >= oauthToken.expiresAt) {
+        console.log('[GHL API] Token has refresh token available (refresh not yet implemented, but will try using token anyway)');
       }
       
       return oauthToken.accessToken;
