@@ -50,15 +50,21 @@ export async function GET(request: NextRequest) {
     authUrl.searchParams.set('prompt', 'consent');
     
     // Scopes must match exactly what's configured in GHL Marketplace app settings
-    // Using only basic scopes that are documented and validated
     // GHL expects scopes joined with + signs, not spaces
+    // Using .readonly format as configured in GHL Marketplace app
     const scopes = [
-      'locations.read',
-      'contacts.read',
+      'locations.readonly',
+      'contacts.readonly',
       'contacts.write',
-      'calendars.read',
+      'calendars.readonly',
       'calendars.write',
-      'opportunities.read',
+      'calendars/events.readonly',
+      'calendars/events.write',
+      'calendars/groups.readonly',
+      'calendars/resources.write',
+      'calendars/groups.write',
+      'calendars/resources.readonly',
+      'opportunities.readonly',
       'opportunities.write'
     ].join('+'); // Use + instead of space to match GHL format
     authUrl.searchParams.set('scope', scopes);
