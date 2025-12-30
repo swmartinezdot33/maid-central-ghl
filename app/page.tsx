@@ -446,7 +446,7 @@ export default function Home() {
                 ) : (
                   <div className="space-y-4">
                     <p className="text-gray-600 mb-4">
-                      Since MaidCentral doesn't support webhooks, you can sync quotes manually or enable automatic polling:
+                      Since MaidCentral doesn&apos;t support webhooks, you can sync quotes manually or enable automatic polling:
                     </p>
                     <div className="bg-gray-50 rounded-lg p-4 mb-4">
                       <p className="text-sm text-gray-700 mb-2">

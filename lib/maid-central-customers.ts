@@ -11,10 +11,17 @@ interface TokenResponse {
 }
 
 export class MaidCentralCustomersAPI {
-  private async authenticate(): Promise<string> {
-    const creds = await getMaidCentralCredentials();
+  private locationId?: string;
+
+  constructor(locationId?: string) {
+    this.locationId = locationId;
+  }
+
+  private async authenticate(locationId?: string): Promise<string> {
+    const locId = locationId || this.locationId;
+    const creds = await getMaidCentralCredentials(locId);
     if (!creds || !creds.username || !creds.password) {
-      throw new Error('Maid Central credentials not configured');
+      throw new Error('Maid Central credentials not configured' + (locId ? ` for location ${locId}` : ''));
     }
 
     if (creds.accessToken && creds.tokenExpiresAt && creds.tokenExpiresAt > Date.now()) {
@@ -47,12 +54,12 @@ export class MaidCentralCustomersAPI {
     }
   }
 
-  private async getAuthHeader(): Promise<string> {
-    const token = await this.authenticate();
+  private async getAuthHeader(locationId?: string): Promise<string> {
+    const token = await this.authenticate(locationId);
     return `Bearer ${token}`;
   }
 
-  async getCustomers(params?: { limit?: number; offset?: number; search?: string; query?: string }): Promise<any> {
+  async getCustomers(params?: { limit?: number; offset?: number; search?: string; query?: string }, locationId?: string): Promise<any> {
     // If a search term is provided, try to find by email/phone using CreateOrUpdate
     // This is a workaround because Maid Central doesn't have a public search API
     if (params?.search || params?.query) {
@@ -62,6 +69,7 @@ export class MaidCentralCustomersAPI {
         try {
           console.log(`[Maid Central API] Attempting to find customer by email: ${searchTerm}`);
           const { maidCentralAPI } = await import('./maid-central');
+          const locId = locationId || this.locationId;
           const lead = await maidCentralAPI.createLead({
             Email: searchTerm,
             // We need to provide dummy required fields to satisfy the API
@@ -75,7 +83,7 @@ export class MaidCentralCustomersAPI {
             Phone: '555-555-5555',
             PostalCode: '00000',
             AllowDuplicates: false 
-          });
+          }, locId);
           
           if (lead && lead.LeadId) {
             // Map lead to customer format
@@ -93,7 +101,8 @@ export class MaidCentralCustomersAPI {
       }
     }
 
-    const token = await this.getAuthHeader();
+    const locId = locationId || this.locationId;
+    const token = await this.getAuthHeader(locId);
     
     try {
       // Try different parameter names that Maid Central API might use
@@ -201,8 +210,8 @@ export class MaidCentralCustomersAPI {
     }
   }
 
-  async getCustomer(customerId: string | number): Promise<any> {
-    const token = await this.getAuthHeader();
+  async getCustomer(customerId: string | number, locationId?: string): Promise<any> {
+    const token = await this.getAuthHeader(locationId);
     
     try {
       const response = await axios.get(`${MAID_CENTRAL_API_BASE_URL}/customers/${customerId}`, {
@@ -225,8 +234,9 @@ export class MaidCentralCustomersAPI {
     }
   }
 
-  async createCustomer(customerData: any): Promise<any> {
-    const token = await this.getAuthHeader();
+  async createCustomer(customerData: any, locationId?: string): Promise<any> {
+    const locId = locationId || this.locationId;
+    const token = await this.getAuthHeader(locId);
     
     try {
       const response = await axios.post(`${MAID_CENTRAL_API_BASE_URL}/customers`, customerData, {
@@ -238,7 +248,7 @@ export class MaidCentralCustomersAPI {
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 401) {
-        const newToken = await this.authenticate();
+        const newToken = await this.authenticate(locId);
         const response = await axios.post(`${MAID_CENTRAL_API_BASE_URL}/customers`, customerData, {
           headers: {
             Authorization: `Bearer ${newToken}`,
@@ -251,8 +261,9 @@ export class MaidCentralCustomersAPI {
     }
   }
 
-  async updateCustomer(customerId: string | number, customerData: any): Promise<any> {
-    const token = await this.getAuthHeader();
+  async updateCustomer(customerId: string | number, customerData: any, locationId?: string): Promise<any> {
+    const locId = locationId || this.locationId;
+    const token = await this.getAuthHeader(locId);
     
     try {
       const response = await axios.put(`${MAID_CENTRAL_API_BASE_URL}/customers/${customerId}`, customerData, {
@@ -264,7 +275,7 @@ export class MaidCentralCustomersAPI {
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 401) {
-        const newToken = await this.authenticate();
+        const newToken = await this.authenticate(locId);
         const response = await axios.put(`${MAID_CENTRAL_API_BASE_URL}/customers/${customerId}`, customerData, {
           headers: {
             Authorization: `Bearer ${newToken}`,
@@ -277,8 +288,9 @@ export class MaidCentralCustomersAPI {
     }
   }
 
-  async deleteCustomer(customerId: string | number): Promise<void> {
-    const token = await this.getAuthHeader();
+  async deleteCustomer(customerId: string | number, locationId?: string): Promise<void> {
+    const locId = locationId || this.locationId;
+    const token = await this.getAuthHeader(locId);
     
     try {
       await axios.delete(`${MAID_CENTRAL_API_BASE_URL}/customers/${customerId}`, {
@@ -288,7 +300,7 @@ export class MaidCentralCustomersAPI {
       });
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 401) {
-        const newToken = await this.authenticate();
+        const newToken = await this.authenticate(locId);
         await axios.delete(`${MAID_CENTRAL_API_BASE_URL}/customers/${customerId}`, {
           headers: {
             Authorization: `Bearer ${newToken}`,

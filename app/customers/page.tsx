@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { LocationGuard } from '@/components/LocationGuard';
+import { useGHLIframe } from '@/lib/ghl-iframe-context';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -22,6 +23,7 @@ interface Customer {
 
 export default function CustomersPage() {
   const router = useRouter();
+  const { ghlData } = useGHLIframe();
   const [lookupId, setLookupId] = useState('');
   const [foundCustomer, setFoundCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(false);
@@ -32,14 +34,19 @@ export default function CustomersPage() {
     if (e) e.preventDefault();
     if (!lookupId.trim()) return;
 
+    if (!ghlData?.locationId) {
+      setMessage({ type: 'error', text: 'Location ID is required. Please ensure you are accessing this app through CRM.' });
+      return;
+    }
+
     try {
       setLoading(true);
       setMessage(null);
       setFoundCustomer(null);
 
-      let url = `/api/maid-central/customers/${lookupId}`;
+      let url = `/api/maid-central/customers/${lookupId}?locationId=${ghlData.locationId}`;
       if (lookupId.includes('@')) {
-        url = `/api/maid-central/customers?search=${encodeURIComponent(lookupId)}`;
+        url = `/api/maid-central/customers?search=${encodeURIComponent(lookupId)}&locationId=${ghlData.locationId}`;
       }
 
       const response = await fetch(url);

@@ -45,7 +45,7 @@ function SetupPageContent() {
   const [mcCredentials, setMcCredentials] = useState<CredentialsStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+  const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string; title?: string } | null>(null);
   
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -172,6 +172,7 @@ function SetupPageContent() {
         {message && (
           <Alert
             variant={message.type === 'error' ? 'error' : message.type === 'info' ? 'info' : 'success'}
+            title={message.title}
             onClose={() => setMessage(null)}
           >
             {message.text}
@@ -327,7 +328,11 @@ function SetupPageContent() {
                     const data = await response.json();
                     
                     if (response.ok) {
-                      setMessage({ type: 'success', text: 'OAuth token cleared. Please reinstall the app.' });
+                      setMessage({ 
+                        type: 'success', 
+                        title: 'Token Cleared Successfully',
+                        text: 'OAuth token has been cleared successfully. Please click the "Install via OAuth" or "Reinstall App" button above to reinstall the app and restore access.' 
+                      });
                       await fetchOAuthStatus();
                     } else {
                       setMessage({ type: 'error', text: data.error || 'Failed to clear token' });

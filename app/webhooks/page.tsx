@@ -201,7 +201,7 @@ export default function WebhooksPage() {
         {loading ? (
           <p>Loading webhooks...</p>
         ) : configs.length === 0 ? (
-          <p style={{ color: '#666', fontStyle: 'italic' }}>No webhooks configured. Click "Add Webhook" to create one.</p>
+          <p style={{ color: '#666', fontStyle: 'italic' }}>No webhooks configured. Click &quot;Add Webhook&quot; to create one.</p>
         ) : (
           <div style={{ display: 'grid', gap: '1rem' }}>
             {configs.map((config) => (

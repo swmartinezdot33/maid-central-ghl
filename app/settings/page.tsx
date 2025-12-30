@@ -747,7 +747,7 @@ function SettingsPageContent() {
                 <Alert variant="info">
                   <p className="font-medium mb-2">Automatic Field Mapping:</p>
                   <ul className="text-sm space-y-1 list-disc list-inside">
-                    <li><strong>Basic Fields:</strong> Name, email, phone, and address automatically map to CRM's native contact fields</li>
+                    <li><strong>Basic Fields:</strong> Name, email, phone, and address automatically map to CRM&apos;s native contact fields</li>
                     <li><strong>All Other Fields:</strong> Automatically create custom fields with prefix <code className="bg-white/50 px-1 rounded">{config?.customFieldPrefix || 'maidcentral_quote_'}</code></li>
                     <li><strong>No Manual Mapping:</strong> Everything happens automatically based on field names</li>
                   </ul>

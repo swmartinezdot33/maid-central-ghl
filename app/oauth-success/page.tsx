@@ -79,7 +79,7 @@ function OAuthSuccessContent() {
                   Location ID: <code style={{ backgroundColor: '#f8f9fa', padding: '2px 6px', borderRadius: '2px', fontFamily: 'monospace' }}>{locationId}</code>
                 </p>
                 <p style={{ marginBottom: '1.5rem', fontSize: '0.85rem', color: '#666' }}>
-                  OAuth token and location ID have been stored. Users viewing this app from the custom menu link will automatically use this location's configuration.
+                  OAuth token and location ID have been stored. Users viewing this app from the custom menu link will automatically use this location&apos;s configuration.
                 </p>
                 <p style={{ marginBottom: '1rem', fontSize: '0.85rem' }}>
                   <a 
@@ -138,7 +138,7 @@ function OAuthSuccessContent() {
                 textAlign: 'left'
               }}>
                 <strong style={{ display: 'block', marginBottom: '0.5rem', color: '#856404' }}>
-                  Common Fix for "invalid_request" Error:
+                  Common Fix for &quot;invalid_request&quot; Error:
                 </strong>
                 <ol style={{ margin: '0.5rem 0', paddingLeft: '1.5rem', fontSize: '0.9rem', color: '#856404' }}>
                   <li style={{ marginBottom: '0.5rem' }}>Go to your <strong>CRM Marketplace app settings</strong></li>

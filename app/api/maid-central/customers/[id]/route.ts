@@ -1,14 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 import { maidCentralCustomersAPI } from '@/lib/maid-central-customers';
+import { getLocationId } from '@/lib/request-utils';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const customer = await maidCentralCustomersAPI.getCustomer(params.id);
-    return NextResponse.json(customer);
+    const locationId = await getLocationId(request);
+    
+    if (!locationId) {
+      return NextResponse.json(
+        { error: 'Location ID is required. Provide it via query param (?locationId=...), header (x-ghl-location-id), or in request body.' },
+        { status: 400 }
+      );
+    }
+
+    const customer = await maidCentralCustomersAPI.getCustomer(params.id, locationId);
+    return NextResponse.json({ customer });
   } catch (error) {
     console.error('Error fetching customer:', error);
     return NextResponse.json(

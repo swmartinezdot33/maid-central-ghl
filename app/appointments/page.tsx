@@ -504,7 +504,7 @@ export default function AppointmentsPage() {
           <div style={{ padding: '2rem', textAlign: 'center', color: '#666' }}>
             <p>No synced appointments yet.</p>
             <p style={{ fontSize: '0.9rem', marginTop: '0.5rem' }}>
-              Sync appointments using the "Sync to GHL" button above, or use "Sync All Appointments Now" to sync all at once.
+              Sync appointments using the &quot;Sync to GHL&quot; button above, or use &quot;Sync All Appointments Now&quot; to sync all at once.
             </p>
           </div>
         ) : (

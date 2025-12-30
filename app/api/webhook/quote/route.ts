@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Also support GET for testing
+// Also support GET for testing/lookup
 export async function GET(request: NextRequest) {
   const quoteId = request.nextUrl.searchParams.get('quoteId');
   
@@ -103,13 +103,38 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Process as if it was a POST webhook
-  return POST(new NextRequest(request.url, {
-    method: 'POST',
-    body: JSON.stringify({ quoteId }),
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  }));
+  try {
+    // Get locationId from request (iframe context, query param, or header)
+    const locationId = await getLocationId(request);
+    const config = await getIntegrationConfig(locationId);
+    
+    if (!locationId) {
+      return NextResponse.json(
+        { error: 'Location ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // Fetch the quote from MaidCentral to return it
+    const { maidCentralAPI } = await import('@/lib/maid-central');
+    const quote = await maidCentralAPI.getLead(quoteId, locationId);
+    
+    return NextResponse.json({
+      quote: quote,
+      quoteId: quoteId,
+    });
+  } catch (error) {
+    console.error('[Webhook GET] Error fetching quote:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to fetch quote';
+    
+    return NextResponse.json(
+      { 
+        error: 'Failed to fetch quote',
+        message: errorMessage,
+        quoteId: quoteId || undefined,
+      },
+      { status: 500 }
+    );
+  }
 }
 

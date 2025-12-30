@@ -140,8 +140,8 @@ export class MaidCentralAPI {
   // NOTE: These use the documented /api/Lead/... endpoints
 
   // Create or update a Lead (Step 1)
-  async createLead(leadPayload: any): Promise<any> {
-    const token = await this.getAuthHeader();
+  async createLead(leadPayload: any, locationId?: string): Promise<any> {
+    const token = await this.getAuthHeader(locationId);
     
     const url = `${MAID_CENTRAL_API_BASE_URL}/api/Lead/CreateOrUpdate`;
     try {
@@ -154,7 +154,7 @@ export class MaidCentralAPI {
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 401) {
-        const newToken = await this.refreshToken();
+        const newToken = await this.refreshToken(locationId);
         const response = await axios.post(url, leadPayload, {
           headers: {
             Authorization: `Bearer ${newToken}`,

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { LocationGuard } from '@/components/LocationGuard';
+import { useGHLIframe } from '@/lib/ghl-iframe-context';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -25,6 +26,7 @@ interface Quote {
 
 export default function QuotesPage() {
   const router = useRouter();
+  const { ghlData } = useGHLIframe();
   const [lookupId, setLookupId] = useState('');
   const [foundQuote, setFoundQuote] = useState<Quote | null>(null);
   const [loading, setLoading] = useState(false);
@@ -35,12 +37,17 @@ export default function QuotesPage() {
     if (e) e.preventDefault();
     if (!lookupId.trim()) return;
 
+    if (!ghlData?.locationId) {
+      setMessage({ type: 'error', text: 'Location ID is required. Please ensure you are accessing this app through CRM.' });
+      return;
+    }
+
     try {
       setLoading(true);
       setMessage(null);
       setFoundQuote(null);
 
-      const response = await fetch(`/api/webhook/quote?quoteId=${encodeURIComponent(lookupId)}`);
+      const response = await fetch(`/api/webhook/quote?quoteId=${encodeURIComponent(lookupId)}&locationId=${ghlData.locationId}`);
       const data = await response.json();
 
       if (response.ok && data.quote) {
