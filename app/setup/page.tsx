@@ -306,11 +306,21 @@ function SetupPageContent() {
           )}
         </div>
         
-        {ghlData?.locationId && (
-          <p style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: '#666' }}>
-            Current Location from iframe: <code style={{ backgroundColor: '#f0f0f0', padding: '2px 4px', borderRadius: '2px' }}>{ghlData.locationId}</code>
-          </p>
-        )}
+                {ghlData?.locationId && (
+                  <div style={{ marginTop: '0.5rem' }}>
+                    <p style={{ fontSize: '0.85rem', color: '#666' }}>
+                      Current Location from iframe: <code style={{ backgroundColor: '#f0f0f0', padding: '2px 4px', borderRadius: '2px' }}>{ghlData.locationId}</code>
+                    </p>
+                    <a 
+                      href={`/api/auth/oauth/diagnose?locationId=${ghlData.locationId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ fontSize: '0.85rem', color: '#007bff', textDecoration: 'underline' }}
+                    >
+                      🔍 Diagnose Token Issues
+                    </a>
+                  </div>
+                )}
       </div>
 
 
