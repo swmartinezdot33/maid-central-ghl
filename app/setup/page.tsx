@@ -110,7 +110,8 @@ function SetupPageContent() {
     }
     
     console.log('[Setup] Initiating OAuth installation for locationId:', locationId);
-    window.location.href = authUrl.toString();
+    // Open in new tab so OAuth flow can complete properly (especially when in iframe)
+    window.open(authUrl.toString(), '_blank');
   };
 
   const handleSaveCredentials = async (e: React.FormEvent) => {
