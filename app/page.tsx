@@ -39,6 +39,9 @@ interface ConfigStatus {
     ghlCalendarId?: string;
     appointmentSyncInterval?: number;
     appointmentConflictResolution?: string;
+    quotePollingEnabled?: boolean;
+    quotePollingInterval?: number;
+    lastQuotePollAt?: number;
   };
   ghlConnected: boolean;
   hasLocationId: boolean;
@@ -380,11 +383,11 @@ export default function Home() {
                       <ArrowRightIcon className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                     </Button>
                   </Link>
-                  <Link href="/mapping">
+                  <Link href="/settings">
                     <Button variant="secondary" className="w-full justify-between group">
                       <div className="flex items-center gap-2">
                         <PuzzlePieceIcon className="w-5 h-5" />
-                        <span>Mapping</span>
+                        <span>Field Mapping</span>
                       </div>
                       <ArrowRightIcon className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                     </Button>
@@ -415,26 +418,55 @@ export default function Home() {
                 </Card>
               )}
 
-              {/* How to Sync */}
+              {/* Quote Syncing Information */}
               <Card padding="lg">
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">How to Sync Quotes</h2>
-                <p className="text-gray-600 mb-4">
-                  Since MaidCentral doesn't support webhooks, you can sync quotes manually:
-                </p>
-                <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                  <p className="text-sm text-gray-700 mb-2">
-                    <strong>Option 1:</strong> Use the Quotes page to view and sync individual quotes
-                  </p>
-                  <p className="text-sm text-gray-700">
-                    <strong>Option 2:</strong> Use the API endpoint directly (POST or GET):
-                  </p>
-                  <code className="block mt-2 p-3 bg-white rounded border text-xs font-mono break-all">
-                    {typeof window !== 'undefined' ? `${window.location.origin}/api/webhook/quote?quoteId=YOUR_QUOTE_ID` : 'Loading...'}
-                  </code>
-                </div>
-                <Alert variant="warning">
-                  <strong>Note:</strong> Manual sync is currently the only option. We're working on adding automatic polling in a future update.
-                </Alert>
+                <h2 className="text-xl font-semibold text-gray-900 mb-4">Quote Syncing</h2>
+                {status?.config?.quotePollingEnabled ? (
+                  <div className="space-y-4">
+                    <Alert variant="success">
+                      <strong>Automatic polling is enabled!</strong> Quotes will be automatically synced every {status.config.quotePollingInterval || 15} minutes.
+                    </Alert>
+                    {status.config.lastQuotePollAt && (
+                      <p className="text-sm text-gray-600">
+                        Last poll: {new Date(status.config.lastQuotePollAt).toLocaleString()}
+                      </p>
+                    )}
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <p className="text-sm text-gray-700 mb-2">
+                        <strong>Manual Sync Options:</strong>
+                      </p>
+                      <p className="text-sm text-gray-700 mb-2">
+                        • Use the Quotes page to view and sync individual quotes
+                      </p>
+                      <p className="text-sm text-gray-700">
+                        • Use the API endpoint directly: <code className="bg-white px-2 py-1 rounded text-xs font-mono">{typeof window !== 'undefined' ? `${window.location.origin}/api/webhook/quote?quoteId=YOUR_QUOTE_ID` : 'Loading...'}</code>
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <p className="text-gray-600 mb-4">
+                      Since MaidCentral doesn't support webhooks, you can sync quotes manually or enable automatic polling:
+                    </p>
+                    <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                      <p className="text-sm text-gray-700 mb-2">
+                        <strong>Option 1:</strong> Enable automatic polling in Settings (recommended)
+                      </p>
+                      <p className="text-sm text-gray-700 mb-2">
+                        <strong>Option 2:</strong> Use the Quotes page to view and sync individual quotes
+                      </p>
+                      <p className="text-sm text-gray-700">
+                        <strong>Option 3:</strong> Use the API endpoint directly (POST or GET):
+                      </p>
+                      <code className="block mt-2 p-3 bg-white rounded border text-xs font-mono break-all">
+                        {typeof window !== 'undefined' ? `${window.location.origin}/api/webhook/quote?quoteId=YOUR_QUOTE_ID` : 'Loading...'}
+                      </code>
+                    </div>
+                    <Alert variant="info">
+                      <strong>Tip:</strong> Enable automatic quote polling in Settings to automatically sync new quotes every 15 minutes (configurable).
+                    </Alert>
+                  </div>
+                )}
               </Card>
             </>
           )}

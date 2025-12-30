@@ -51,6 +51,10 @@ export interface IntegrationConfig {
   ghlCalendarId?: string; // GHL calendar ID to sync with
   appointmentSyncInterval?: number; // Polling interval in minutes (default: 15)
   appointmentConflictResolution?: 'maid_central_wins' | 'ghl_wins' | 'timestamp'; // Conflict resolution strategy
+  // Quote polling configuration
+  quotePollingEnabled?: boolean; // Toggle for automatic quote polling
+  quotePollingInterval?: number; // Polling interval in minutes (default: 15)
+  lastQuotePollAt?: number; // Timestamp of last quote poll
 }
 
 // Initialize database tables
@@ -238,6 +242,38 @@ export async function initDatabase(): Promise<void> {
     } catch (error) {
       // Columns might already exist, ignore error
       console.log('Appointment sync columns already exist or error adding them:', error);
+    }
+
+    // Add quote polling columns to integration_config if they don't exist
+    try {
+      await sql`ALTER TABLE integration_config ADD COLUMN IF NOT EXISTS quote_polling_enabled BOOLEAN DEFAULT false`;
+      await sql`ALTER TABLE integration_config ADD COLUMN IF NOT EXISTS quote_polling_interval INTEGER DEFAULT 15`;
+      await sql`ALTER TABLE integration_config ADD COLUMN IF NOT EXISTS last_quote_poll_at BIGINT`;
+    } catch (error) {
+      console.log('Quote polling columns already exist or error adding them:', error);
+    }
+
+    // Create table to track synced quotes
+    await sql`
+      CREATE TABLE IF NOT EXISTS synced_quotes (
+        id SERIAL PRIMARY KEY,
+        location_id TEXT NOT NULL,
+        quote_id TEXT NOT NULL,
+        lead_id TEXT,
+        synced_at TIMESTAMP DEFAULT NOW(),
+        contact_id TEXT,
+        opportunity_id TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(location_id, quote_id)
+      )
+    `;
+
+    // Create index for faster lookups
+    try {
+      await sql`CREATE INDEX IF NOT EXISTS idx_synced_quotes_location_quote ON synced_quotes(location_id, quote_id)`;
+      await sql`CREATE INDEX IF NOT EXISTS idx_synced_quotes_location_synced ON synced_quotes(location_id, synced_at)`;
+    } catch (error) {
+      console.log('Indexes might already exist:', error);
     }
 
     // OAuth tokens table for marketplace app installations
@@ -564,7 +600,7 @@ export async function storeIntegrationConfig(config: IntegrationConfig, location
 
   if (configExists.length === 0) {
     await sql`
-      INSERT INTO integration_config (ghl_location_id, enabled, ghl_tag, ghl_tags, sync_quotes, sync_customers, create_opportunities, auto_create_fields, custom_field_prefix, sync_appointments, ghl_calendar_id, appointment_sync_interval, appointment_conflict_resolution)
+      INSERT INTO integration_config (ghl_location_id, enabled, ghl_tag, ghl_tags, sync_quotes, sync_customers, create_opportunities, auto_create_fields, custom_field_prefix, sync_appointments, ghl_calendar_id, appointment_sync_interval, appointment_conflict_resolution, quote_polling_enabled, quote_polling_interval, last_quote_poll_at)
       VALUES (
         ${targetLocationId}, 
         ${config.enabled}, 
@@ -578,7 +614,10 @@ export async function storeIntegrationConfig(config: IntegrationConfig, location
         ${config.syncAppointments !== undefined ? config.syncAppointments : false},
         ${config.ghlCalendarId || null},
         ${config.appointmentSyncInterval !== undefined ? config.appointmentSyncInterval : 15},
-        ${config.appointmentConflictResolution || 'timestamp'}
+        ${config.appointmentConflictResolution || 'timestamp'},
+        ${config.quotePollingEnabled !== undefined ? config.quotePollingEnabled : false},
+        ${config.quotePollingInterval !== undefined ? config.quotePollingInterval : 15},
+        ${config.lastQuotePollAt || null}
       )
     `;
   } else {
@@ -597,6 +636,9 @@ export async function storeIntegrationConfig(config: IntegrationConfig, location
         ghl_calendar_id = ${config.ghlCalendarId || null},
         appointment_sync_interval = ${config.appointmentSyncInterval !== undefined ? config.appointmentSyncInterval : 15},
         appointment_conflict_resolution = ${config.appointmentConflictResolution || 'timestamp'},
+        quote_polling_enabled = ${config.quotePollingEnabled !== undefined ? config.quotePollingEnabled : false},
+        quote_polling_interval = ${config.quotePollingInterval !== undefined ? config.quotePollingInterval : 15},
+        last_quote_poll_at = ${config.lastQuotePollAt || null},
         updated_at = NOW()
       WHERE ghl_location_id = ${targetLocationId}
     `;
@@ -613,7 +655,7 @@ export async function getIntegrationConfig(locationId?: string): Promise<Integra
   let result;
   if (locationId) {
     result = await sql`
-      SELECT ghl_location_id, enabled, ghl_tag, ghl_tags, sync_quotes, sync_customers, create_opportunities, auto_create_fields, custom_field_prefix, sync_appointments, ghl_calendar_id, appointment_sync_interval, appointment_conflict_resolution
+      SELECT ghl_location_id, enabled, ghl_tag, ghl_tags, sync_quotes, sync_customers, create_opportunities, auto_create_fields, custom_field_prefix, sync_appointments, ghl_calendar_id, appointment_sync_interval, appointment_conflict_resolution, quote_polling_enabled, quote_polling_interval, last_quote_poll_at
       FROM integration_config
       WHERE ghl_location_id = ${locationId}
       LIMIT 1
@@ -621,7 +663,7 @@ export async function getIntegrationConfig(locationId?: string): Promise<Integra
   } else {
     // Fallback: get first config (for backward compatibility)
     result = await sql`
-      SELECT ghl_location_id, enabled, ghl_tag, ghl_tags, sync_quotes, sync_customers, create_opportunities, auto_create_fields, custom_field_prefix, sync_appointments, ghl_calendar_id, appointment_sync_interval, appointment_conflict_resolution
+      SELECT ghl_location_id, enabled, ghl_tag, ghl_tags, sync_quotes, sync_customers, create_opportunities, auto_create_fields, custom_field_prefix, sync_appointments, ghl_calendar_id, appointment_sync_interval, appointment_conflict_resolution, quote_polling_enabled, quote_polling_interval, last_quote_poll_at
       FROM integration_config
       LIMIT 1
     `;
@@ -655,6 +697,9 @@ export async function getIntegrationConfig(locationId?: string): Promise<Integra
     const ghlCalendarId = row.ghl_calendar_id as string | undefined;
     const appointmentSyncInterval = row.appointment_sync_interval !== undefined && row.appointment_sync_interval !== null ? row.appointment_sync_interval as number : 15;
     const appointmentConflictResolution = (row.appointment_conflict_resolution as 'maid_central_wins' | 'ghl_wins' | 'timestamp' | undefined) || 'timestamp';
+    const quotePollingEnabled = row.quote_polling_enabled !== undefined && row.quote_polling_enabled !== null ? row.quote_polling_enabled as boolean : false;
+    const quotePollingInterval = row.quote_polling_interval !== undefined && row.quote_polling_interval !== null ? row.quote_polling_interval as number : 15;
+    const lastQuotePollAt = row.last_quote_poll_at !== undefined && row.last_quote_poll_at !== null ? row.last_quote_poll_at as number : undefined;
 
     // Handle tags: support both old single tag (ghl_tag) and new multiple tags (ghl_tags as JSON)
     let ghlTags: string[] | undefined;
@@ -684,6 +729,9 @@ export async function getIntegrationConfig(locationId?: string): Promise<Integra
       ghlCalendarId,
       appointmentSyncInterval,
       appointmentConflictResolution,
+      quotePollingEnabled,
+      quotePollingInterval,
+      lastQuotePollAt,
       fieldMappings,
     };
 }
@@ -863,5 +911,67 @@ export async function getAllAppointmentSyncs(): Promise<AppointmentSync[]> {
     conflictResolution: row.conflict_resolution as 'maid_central_wins' | 'ghl_wins' | 'timestamp' | undefined,
     createdAt: row.created_at ? new Date(row.created_at as Date) : undefined,
     updatedAt: row.updated_at ? new Date(row.updated_at as Date) : undefined,
+  }));
+}
+
+// Synced Quotes Tracking
+export async function markQuoteAsSynced(
+  locationId: string,
+  quoteId: string | number,
+  leadId?: string | number,
+  contactId?: string,
+  opportunityId?: string
+): Promise<void> {
+  await initDatabase();
+  const sql = getSql();
+
+  await sql`
+    INSERT INTO synced_quotes (location_id, quote_id, lead_id, contact_id, opportunity_id, synced_at)
+    VALUES (${locationId}, ${String(quoteId)}, ${leadId ? String(leadId) : null}, ${contactId || null}, ${opportunityId || null}, NOW())
+    ON CONFLICT (location_id, quote_id) 
+    DO UPDATE SET
+      lead_id = EXCLUDED.lead_id,
+      contact_id = EXCLUDED.contact_id,
+      opportunity_id = EXCLUDED.opportunity_id,
+      synced_at = NOW()
+  `;
+}
+
+export async function isQuoteSynced(locationId: string, quoteId: string | number): Promise<boolean> {
+  await initDatabase();
+  const sql = getSql();
+
+  const result = await sql`
+    SELECT id FROM synced_quotes
+    WHERE location_id = ${locationId} AND quote_id = ${String(quoteId)}
+    LIMIT 1
+  `;
+
+  return result.length > 0;
+}
+
+export async function getSyncedQuotes(locationId: string, since?: Date): Promise<Array<{ quoteId: string; syncedAt: Date }>> {
+  await initDatabase();
+  const sql = getSql();
+
+  let result;
+  if (since) {
+    result = await sql`
+      SELECT quote_id, synced_at FROM synced_quotes
+      WHERE location_id = ${locationId} AND synced_at >= ${since}
+      ORDER BY synced_at DESC
+    `;
+  } else {
+    result = await sql`
+      SELECT quote_id, synced_at FROM synced_quotes
+      WHERE location_id = ${locationId}
+      ORDER BY synced_at DESC
+      LIMIT 100
+    `;
+  }
+
+  return result.map((row) => ({
+    quoteId: row.quote_id as string,
+    syncedAt: new Date(row.synced_at as Date),
   }));
 }

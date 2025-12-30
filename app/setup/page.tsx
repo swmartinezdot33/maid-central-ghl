@@ -342,22 +342,6 @@ function SetupPageContent() {
               </Button>
             )}
           </div>
-          
-          {ghlData?.locationId && (
-            <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-              <p className="text-xs text-gray-600 mb-2">
-                Current Location from iframe: <code className="bg-white px-2 py-1 rounded text-xs">{ghlData.locationId}</code>
-              </p>
-              <a 
-                href={`/api/auth/oauth/diagnose?locationId=${ghlData.locationId}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-primary-600 hover:text-primary-700 underline"
-              >
-                🔍 Diagnose Token Issues
-              </a>
-            </div>
-          )}
         </Card>
       </div>
     </LocationGuard>

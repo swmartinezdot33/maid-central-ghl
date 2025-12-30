@@ -144,21 +144,8 @@ export default function MappingPage() {
       });
 
       if (response.ok) {
-        const configResponse = await fetch('/api/config', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            ghlTag: config?.ghlTag || undefined,
-          }),
-        });
-
-        if (configResponse.ok) {
-          setMessage({ type: 'success', text: 'Field mappings and tag configuration saved successfully!' });
-          setMappings(validMappings);
-        } else {
-          setMessage({ type: 'success', text: 'Field mappings saved, but tag configuration failed to save.' });
-          setMappings(validMappings);
-        }
+        setMessage({ type: 'success', text: 'Field mappings saved successfully!' });
+        setMappings(validMappings);
       } else {
         const data = await response.json();
         setMessage({ type: 'error', text: data.error || 'Failed to save mappings' });
@@ -177,7 +164,6 @@ export default function MappingPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           enabled,
-          ghlTag: config?.ghlTag || undefined,
         }),
       });
 
@@ -242,24 +228,6 @@ export default function MappingPage() {
               {config?.enabled ? 'Enabled' : 'Disabled'}
             </Badge>
           </div>
-        </Card>
-
-        {/* Tag Configuration */}
-        <Card padding="lg">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">CRM Tag Configuration</h2>
-          <p className="text-sm text-gray-600 mb-4">
-            When a new quote is synced, this tag will be automatically added to the contact in CRM.
-          </p>
-          <Input
-            label="Tag Name"
-            value={config?.ghlTag || ''}
-            onChange={(e) => {
-              const updatedConfig = { ...config, ghlTag: e.target.value };
-              setConfig(updatedConfig as Config);
-            }}
-            placeholder="e.g., MaidCentral Quote"
-            helperText="Leave empty to skip tagging. The tag will be created in CRM if it doesn't exist."
-          />
         </Card>
 
         {/* Field Mappings */}

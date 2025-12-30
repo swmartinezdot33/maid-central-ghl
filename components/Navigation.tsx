@@ -12,14 +12,12 @@ import {
   DocumentTextIcon,
   CalendarIcon,
   ServerIcon,
-  PuzzlePieceIcon,
 } from '@heroicons/react/24/outline';
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: HomeIcon },
   { name: 'Setup', href: '/setup', icon: WrenchScrewdriverIcon },
   { name: 'Settings', href: '/settings', icon: Cog6ToothIcon },
-  { name: 'Field Mapping', href: '/mapping', icon: PuzzlePieceIcon },
   { name: 'Customers', href: '/customers', icon: UserGroupIcon },
   { name: 'Quotes', href: '/quotes', icon: DocumentTextIcon },
   { name: 'Appointments', href: '/appointments', icon: CalendarIcon },
@@ -32,18 +30,17 @@ export function Navigation() {
   return (
     <nav className="flex flex-col h-full bg-white border-r border-gray-200">
       <div className="flex items-center gap-3 px-6 py-5 border-b border-gray-200">
-        <div className="flex items-center justify-center w-10 h-10 relative">
+        <div className="flex items-center justify-center w-16 h-16 relative">
           <Image
             src="/image.png"
             alt="MaidCentral Logo"
-            width={40}
-            height={40}
+            width={64}
+            height={64}
             className="object-contain"
           />
         </div>
         <div className="flex flex-col">
           <span className="text-sm font-semibold text-gray-900">MaidCentral</span>
-          <span className="text-xs text-gray-500">CRM Integration</span>
         </div>
       </div>
       

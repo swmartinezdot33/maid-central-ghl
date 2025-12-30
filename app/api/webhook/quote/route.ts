@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
-import { maidCentralAPI } from '@/lib/maid-central';
-import { ghlAPI } from '@/lib/ghl';
 import { getIntegrationConfig } from '@/lib/kv';
 import { getLocationId } from '@/lib/request-utils';
+import { syncQuote } from '@/lib/quote-sync';
 
 // Set max duration for Vercel serverless function (60 seconds for webhook processing)
 export const maxDuration = 60;
@@ -29,9 +28,16 @@ export async function POST(request: NextRequest) {
     }
 
     if (!config.ghlLocationId) {
-      console.error('[Webhook] GHL Location ID not configured');
+      console.error('[Webhook] CRM Location ID not configured');
       return NextResponse.json(
-        { error: 'GHL Location ID not configured' },
+        { error: 'CRM Location ID not configured' },
+        { status: 400 }
+      );
+    }
+
+    if (!locationId) {
+      return NextResponse.json(
+        { error: 'Location ID is required' },
         { status: 400 }
       );
     }
@@ -46,71 +52,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get quote data from MaidCentral.
-    // NOTE: The previous implementation used a /quotes endpoint which doesn't exist
-    // in the new MaidCentral Lead API. For now, we will treat the quote payload
-    // as opaque and rely on the webhook body or a future Lead/Quote lookup.
-    // const quote = await maidCentralAPI.getQuote(quoteId);
-    const quote: Record<string, any> = { id: quoteId };
+    // Use the shared sync function
+    const syncResult = await syncQuote(locationId, quoteId, config);
     
-    // Automatically map fields - basic fields to native GHL fields, rest as custom fields.
-    // When we have a full quote payload from MaidCentral, this will map all fields.
-    const prefix = config.customFieldPrefix || 'maidcentral_quote_';
-    let contactData = ghlAPI.autoMapFields(quote, prefix);
-
-    // Ensure custom fields exist in GHL if auto-create is enabled
-    if (config.autoCreateFields) {
-      const customFieldNames = Object.keys(contactData).filter(key => key.startsWith(prefix));
-      await ghlAPI.ensureCustomFields(config.ghlLocationId, customFieldNames, prefix);
-    }
-
-    // Create contact in GHL
-    const contactResult = await ghlAPI.createContact(config.ghlLocationId, contactData);
-    const contactId = contactResult.id || contactResult.contactId || contactResult._id;
-
-    if (!contactId) {
-      throw new Error('Failed to get contact ID from GHL response');
-    }
-
-    // Add tags to contact if configured (support both single tag and multiple tags)
-    const tagsToAdd: string[] = [];
-    if (config.ghlTags && config.ghlTags.length > 0) {
-      tagsToAdd.push(...config.ghlTags.filter(t => t && t.trim()));
-    } else if (config.ghlTag) {
-      tagsToAdd.push(config.ghlTag);
-    }
-    
-    if (tagsToAdd.length > 0) {
-      try {
-        await ghlAPI.addTagsToContact(config.ghlLocationId, contactId, tagsToAdd);
-        console.log(`[Webhook] Added tags "${tagsToAdd.join(', ')}" to contact ${contactId}`);
-      } catch (tagError) {
-        console.error(`[Webhook] Failed to add tags to contact:`, tagError);
-        // Don't fail the whole process if tag addition fails
-      }
-    }
-
-    // Create opportunity/deal in GHL if enabled
-    let opportunityId = null;
-    if (config.createOpportunities !== false) {
-      try {
-        const opportunityData: Record<string, any> = {
-          title: quote.quoteNumber || quote.id || `Quote ${quoteId}`,
-          status: 'new',
-          source: 'Maid Central',
-          monetaryValue: quote.totalAmount || quote.amount || quote.price,
-        };
-
-        const opportunityResult = await ghlAPI.createOpportunity(config.ghlLocationId, contactId, opportunityData);
-        opportunityId = opportunityResult.id || opportunityResult.opportunityId || opportunityResult._id;
-        console.log(`[Webhook] Created opportunity ${opportunityId} for contact ${contactId}`);
-      } catch (oppError) {
-        console.error(`[Webhook] Failed to create opportunity:`, oppError);
-        // Don't fail the whole process if opportunity creation fails
-        // Contact was created successfully, which is the main goal
-      }
-    } else {
-      console.log(`[Webhook] Opportunity creation is disabled, skipping`);
+    if (!syncResult.success) {
+      throw new Error(syncResult.error || 'Failed to sync quote');
     }
 
     const duration = Date.now() - startTime;
@@ -118,10 +64,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'Quote synced to GoHighLevel',
-      contactId,
-      opportunityId,
-            tagsAdded: tagsToAdd.length > 0 ? tagsToAdd : undefined,
+      message: 'Quote synced to CRM',
+      contactId: syncResult.contactId,
+      opportunityId: syncResult.opportunityId,
       quoteId,
       duration: `${duration}ms`,
     });

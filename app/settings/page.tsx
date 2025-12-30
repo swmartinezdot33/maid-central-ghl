@@ -22,6 +22,8 @@ import {
   XCircleIcon,
   CalendarIcon,
   TagIcon,
+  PlusIcon,
+  TrashIcon,
 } from '@heroicons/react/24/outline';
 
 interface Config {
@@ -38,6 +40,10 @@ interface Config {
   ghlCalendarId?: string;
   appointmentSyncInterval?: number;
   appointmentConflictResolution?: 'maid_central_wins' | 'ghl_wins' | 'timestamp';
+  quotePollingEnabled?: boolean;
+  quotePollingInterval?: number;
+  lastQuotePollAt?: number;
+  fieldMappings?: FieldMapping[];
 }
 
 interface Calendar {
@@ -45,6 +51,20 @@ interface Calendar {
   name: string;
   description?: string;
   timezone?: string;
+}
+
+interface Field {
+  name: string;
+  label: string;
+  type?: string;
+  category?: string;
+}
+
+interface FieldMapping {
+  maidCentralField: string;
+  ghlField: string;
+  maidCentralLabel?: string;
+  ghlLabel?: string;
 }
 
 function SettingsPageContent() {
@@ -57,6 +77,11 @@ function SettingsPageContent() {
   const [calendars, setCalendars] = useState<Calendar[]>([]);
   const [loadingCalendars, setLoadingCalendars] = useState(false);
   const [ghlConnected, setGhlConnected] = useState(false);
+  const [mcFields, setMcFields] = useState<Field[]>([]);
+  const [ghlFields, setGhlFields] = useState<Field[]>([]);
+  const [mappings, setMappings] = useState<FieldMapping[]>([]);
+  const [savingMappings, setSavingMappings] = useState(false);
+  const [loadingFields, setLoadingFields] = useState(false);
 
   useEffect(() => {
     if (ghlData?.locationId) {
@@ -67,6 +92,12 @@ function SettingsPageContent() {
   useEffect(() => {
     if (ghlData?.locationId) {
       loadCalendars();
+    }
+  }, [ghlData?.locationId]);
+
+  useEffect(() => {
+    if (ghlData?.locationId) {
+      loadFieldData();
     }
   }, [ghlData?.locationId]);
 
@@ -83,7 +114,7 @@ function SettingsPageContent() {
       const data = await response.json();
       
       if (response.ok) {
-        setConfig(data.config || {
+        const loadedConfig = data.config || {
           enabled: false,
           syncQuotes: true,
           syncCustomers: false,
@@ -93,7 +124,9 @@ function SettingsPageContent() {
           syncAppointments: false,
           appointmentSyncInterval: 15,
           appointmentConflictResolution: 'timestamp',
-        });
+        };
+        setConfig(loadedConfig);
+        setMappings(loadedConfig.fieldMappings || []);
         setGhlConnected(data.ghlConnected || false);
       } else {
         if (data.error) {
@@ -128,6 +161,117 @@ function SettingsPageContent() {
     }
   };
 
+  const loadFieldData = async () => {
+    if (!ghlData?.locationId) return;
+    
+    try {
+      setLoadingFields(true);
+      
+      // Load MaidCentral fields
+      try {
+        const mcRes = await fetch('/api/maid-central/fields');
+        const mcData = await mcRes.json();
+        const fields = mcData.fields.map((field: string) => ({
+          name: field,
+          label: field.charAt(0).toUpperCase() + field.slice(1).replace(/([A-Z])/g, ' $1'),
+        }));
+        setMcFields(fields);
+      } catch (error) {
+        console.error('Error loading Maid Central fields:', error);
+        setMessage({ type: 'error', text: 'Failed to load MaidCentral fields. Please ensure credentials are configured.' });
+      }
+
+      // Load GHL fields
+      const locationIdToUse = ghlData.locationId;
+      if (locationIdToUse) {
+        try {
+          const ghlRes = await fetch(`/api/ghl/fields?locationId=${locationIdToUse}`);
+          if (!ghlRes.ok) {
+            const errorData = await ghlRes.json().catch(() => ({}));
+            throw new Error(errorData.error || `HTTP ${ghlRes.status}: ${ghlRes.statusText}`);
+          }
+          
+          const ghlData = await ghlRes.json();
+          if (ghlData.error) {
+            throw new Error(ghlData.error);
+          }
+          
+          if (!ghlData.fields || !Array.isArray(ghlData.fields)) {
+            throw new Error('Invalid response format from GHL fields API');
+          }
+          
+          setGhlFields(ghlData.fields);
+        } catch (error) {
+          console.error('Error loading GHL fields:', error);
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+          setMessage({ type: 'error', text: `Failed to load CRM fields: ${errorMsg}` });
+        }
+      }
+    } catch (error) {
+      console.error('Error loading field data:', error);
+    } finally {
+      setLoadingFields(false);
+    }
+  };
+
+  const addMapping = () => {
+    setMappings([...mappings, { maidCentralField: '', ghlField: '' }]);
+  };
+
+  const updateMapping = (index: number, field: keyof FieldMapping, value: string) => {
+    const updated = [...mappings];
+    updated[index] = { ...updated[index], [field]: value };
+    
+    if (field === 'maidCentralField') {
+      const mcField = mcFields.find(f => f.name === value);
+      updated[index].maidCentralLabel = mcField?.label;
+    }
+    if (field === 'ghlField') {
+      const ghlField = ghlFields.find(f => f.name === value);
+      updated[index].ghlLabel = ghlField?.label;
+    }
+    
+    setMappings(updated);
+  };
+
+  const removeMapping = (index: number) => {
+    setMappings(mappings.filter((_, i) => i !== index));
+  };
+
+  const saveMappings = async () => {
+    if (!ghlData?.locationId) {
+      setMessage({ type: 'error', text: 'Location ID is required' });
+      return;
+    }
+
+    setSavingMappings(true);
+    setMessage(null);
+
+    const validMappings = mappings.filter(m => m.maidCentralField && m.ghlField);
+
+    try {
+      const response = await fetch('/api/mappings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mappings: validMappings }),
+      });
+
+      if (response.ok) {
+        // Update config with new mappings
+        setConfig({ ...config!, fieldMappings: validMappings });
+        setMappings(validMappings);
+        setMessage({ type: 'success', text: 'Field mappings saved successfully!' });
+      } else {
+        const data = await response.json();
+        setMessage({ type: 'error', text: data.error || 'Failed to save mappings' });
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Failed to save mappings' });
+    } finally {
+      setSavingMappings(false);
+    }
+  };
+
   const saveConfig = async () => {
     if (!ghlData?.locationId || !config) {
       setMessage({ type: 'error', text: 'Location ID is required or no configuration to save' });
@@ -138,7 +282,7 @@ function SettingsPageContent() {
     setMessage(null);
 
     try {
-      const configToSave = { ...config, ghlLocationId: ghlData.locationId };
+      const configToSave = { ...config, ghlLocationId: ghlData.locationId, fieldMappings: mappings };
       const response = await fetch(`/api/config?locationId=${ghlData.locationId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -219,6 +363,7 @@ function SettingsPageContent() {
           <TabsList>
             <TabsTrigger value="integration">Integration Controls</TabsTrigger>
             <TabsTrigger value="appointments">Appointment Sync</TabsTrigger>
+            <TabsTrigger value="field-mapping">Field Mapping</TabsTrigger>
             <TabsTrigger value="tags">Tags & Fields</TabsTrigger>
           </TabsList>
 
@@ -247,6 +392,43 @@ function SettingsPageContent() {
                     />
                   </div>
                 </div>
+
+                {config?.syncQuotes !== false && (
+                  <div className="p-4 bg-gray-50 rounded-lg space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <Toggle
+                          label="Automatic Quote Polling"
+                          description="Automatically poll for new quotes at regular intervals"
+                          checked={config?.quotePollingEnabled || false}
+                          onChange={(e) => setConfig({ ...config!, quotePollingEnabled: e.target.checked })}
+                          disabled={!config?.enabled || !config?.syncQuotes}
+                        />
+                      </div>
+                    </div>
+
+                    {config?.quotePollingEnabled && (
+                      <div>
+                        <Input
+                          label="Polling Interval (minutes)"
+                          type="number"
+                          min="5"
+                          max="1440"
+                          step="5"
+                          value={config?.quotePollingInterval || 15}
+                          onChange={(e) => setConfig({ ...config!, quotePollingInterval: parseInt(e.target.value) || 15 })}
+                          disabled={!config?.enabled || !config?.syncQuotes || !config?.quotePollingEnabled}
+                          helperText="How often to automatically check for new quotes (5-1440 minutes). Default: 15 minutes."
+                        />
+                        {config?.lastQuotePollAt && (
+                          <p className="text-sm text-gray-500 mt-2">
+                            Last poll: {new Date(config.lastQuotePollAt).toLocaleString()}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                   <div className="flex-1">
@@ -408,6 +590,123 @@ function SettingsPageContent() {
                         Sync All Appointments Now
                       </Button>
                     </div>
+                  </>
+                )}
+              </div>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="field-mapping">
+            <Card padding="lg">
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900 mb-2">Field Mappings</h2>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Map MaidCentral quote fields to CRM contact fields. Fields not mapped here will use automatic mapping.
+                  </p>
+                </div>
+
+                {loadingFields ? (
+                  <div className="flex items-center justify-center py-8">
+                    <LoadingSpinner size="lg" />
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between mb-4">
+                      <p className="text-sm text-gray-600">
+                        {mappings.length} mapping{mappings.length !== 1 ? 's' : ''} configured
+                      </p>
+                      <Button onClick={addMapping} variant="primary" size="sm">
+                        <PlusIcon className="w-4 h-4 mr-2" />
+                        Add Mapping
+                      </Button>
+                    </div>
+
+                    {mappings.length === 0 ? (
+                      <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-lg">
+                        <p className="text-gray-500 mb-4">No mappings configured</p>
+                        <p className="text-sm text-gray-400 mb-4">
+                          Fields will be automatically mapped based on field names
+                        </p>
+                        <Button onClick={addMapping} variant="secondary">
+                          <PlusIcon className="w-4 h-4 mr-2" />
+                          Add Your First Mapping
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {mappings.map((mapping, index) => (
+                          <Card key={index} padding="md" className="bg-gray-50">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                  MaidCentral Field
+                                </label>
+                                <Select
+                                  options={[
+                                    { value: '', label: 'Select field...' },
+                                    ...mcFields.map(field => ({ value: field.name, label: field.label }))
+                                  ]}
+                                  value={mapping.maidCentralField}
+                                  onChange={(e) => updateMapping(index, 'maidCentralField', e.target.value)}
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                  CRM Field
+                                </label>
+                                <div className="flex gap-2">
+                                  <Select
+                                    options={[
+                                      { value: '', label: 'Select field...' },
+                                      ...ghlFields.map(field => ({
+                                        value: field.name,
+                                        label: `${field.label}${field.category === 'opportunity' ? ' (Opportunity)' : ''}${field.category === 'object' ? ' (Object)' : ''}${field.category === 'contact' && field.type !== 'standard' ? ' (Contact Custom)' : ''}${field.type === 'standard' ? ' (Standard)' : ''}`
+                                      }))
+                                    ]}
+                                    value={mapping.ghlField}
+                                    onChange={(e) => updateMapping(index, 'ghlField', e.target.value)}
+                                    className="flex-1"
+                                  />
+                                  {mappings.length > 1 && (
+                                    <Button
+                                      variant="danger"
+                                      size="sm"
+                                      onClick={() => removeMapping(index)}
+                                      className="px-3"
+                                    >
+                                      <TrashIcon className="w-4 h-4" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </Card>
+                        ))}
+                      </div>
+                    )}
+
+                    {mappings.length > 0 && (
+                      <div className="mt-6">
+                        <Button 
+                          onClick={saveMappings} 
+                          variant="primary" 
+                          disabled={savingMappings}
+                          className="w-full"
+                          size="lg"
+                        >
+                          {savingMappings ? (
+                            <>
+                              <LoadingSpinner size="sm" className="mr-2" />
+                              Saving...
+                            </>
+                          ) : (
+                            'Save Mappings'
+                          )}
+                        </Button>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
