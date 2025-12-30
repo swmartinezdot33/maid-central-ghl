@@ -16,6 +16,55 @@ export async function GET(request: NextRequest) {
 
     console.log(`[Calendars API] Fetching calendars for location: ${locationId}`);
     
+    // First, verify the OAuth token exists and is valid
+    try {
+      const { getGHLOAuthToken } = await import('@/lib/db');
+      const oauthToken = await getGHLOAuthToken(locationId);
+      
+      if (!oauthToken || !oauthToken.accessToken) {
+        console.error('[Calendars API] No OAuth token found for location:', locationId);
+        return NextResponse.json(
+          { 
+            error: 'GHL OAuth not configured for this location. Please install the app via OAuth.',
+            calendars: [],
+          },
+          { status: 401 }
+        );
+      }
+      
+      // Validate token format
+      const tokenParts = oauthToken.accessToken.split('.');
+      if (tokenParts.length !== 3) {
+        console.error('[Calendars API] Token is not a valid JWT format:', {
+          parts: tokenParts.length,
+          tokenLength: oauthToken.accessToken.length,
+        });
+        return NextResponse.json(
+          { 
+            error: 'Invalid OAuth token format. Please reinstall the app via OAuth.',
+            calendars: [],
+          },
+          { status: 401 }
+        );
+      }
+      
+      console.log('[Calendars API] OAuth token found and validated:', {
+        hasToken: true,
+        tokenLength: oauthToken.accessToken.length,
+        tokenPrefix: oauthToken.accessToken.substring(0, 30) + '...',
+        isJWT: true,
+      });
+    } catch (tokenCheckError) {
+      console.error('[Calendars API] Error checking OAuth token:', tokenCheckError);
+      return NextResponse.json(
+        { 
+          error: 'Failed to verify OAuth token. Please reinstall the app via OAuth.',
+          calendars: [],
+        },
+        { status: 500 }
+      );
+    }
+    
     try {
       const calendars = await ghlAPI.getCalendars(locationId);
       
@@ -38,23 +87,47 @@ export async function GET(request: NextRequest) {
         })),
       });
     } catch (apiError) {
+      console.error('[Calendars API] ============================================');
       console.error('[Calendars API] Error calling GHL API:', apiError);
       const errorMessage = apiError instanceof Error ? apiError.message : String(apiError);
+      
+      // Check if it's an axios error with response data
+      let ghlErrorDetails: any = null;
+      if (apiError && typeof apiError === 'object' && 'response' in apiError) {
+        const axiosError = apiError as any;
+        ghlErrorDetails = {
+          status: axiosError.response?.status,
+          statusText: axiosError.response?.statusText,
+          data: axiosError.response?.data,
+          headers: axiosError.response?.headers,
+          url: axiosError.config?.url,
+          method: axiosError.config?.method,
+        };
+        console.error('[Calendars API] GHL API Error Response:', ghlErrorDetails);
+      }
+      
       console.error('[Calendars API] Error details:', {
         message: errorMessage,
+        name: apiError instanceof Error ? apiError.name : undefined,
         stack: apiError instanceof Error ? apiError.stack : undefined,
+        ghlErrorDetails,
       });
+      console.error('[Calendars API] ============================================');
+      
+      // Return appropriate status code based on error type
+      const statusCode = ghlErrorDetails?.status === 401 || ghlErrorDetails?.status === 403 ? 401 : 500;
       
       return NextResponse.json(
         { 
           error: `Failed to fetch calendars from GHL: ${errorMessage}`,
           calendars: [],
-          details: apiError instanceof Error ? {
-            message: apiError.message,
-            name: apiError.name,
-          } : undefined,
+          details: {
+            message: apiError instanceof Error ? apiError.message : String(apiError),
+            name: apiError instanceof Error ? apiError.name : undefined,
+            ghlError: ghlErrorDetails,
+          },
         },
-        { status: 500 }
+        { status: statusCode }
       );
     }
   } catch (error) {

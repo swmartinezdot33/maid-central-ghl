@@ -4,6 +4,11 @@ import { getGHLOAuthToken, type GHLOAuthToken } from './db';
 // GHL API v2 base URL
 const GHL_API_BASE_URL = 'https://services.leadconnectorhq.com';
 
+// GHL API v2.0 version header
+// IMPORTANT: GHL API v1.0 (with version '2021-07-28') has been sunset and is no longer supported.
+// ALL API calls MUST use v2.0 with version '2024-01-01'.
+const GHL_API_VERSION = '2024-01-01';
+
 // GHL API v2 endpoints - OAuth only (marketplace app)
 
 // Create axios instance with timeout for serverless optimization
@@ -177,7 +182,7 @@ export class GHLAPI {
       const response = await this.client.get(`/locations/${locationId}`, {
         headers: {
           Authorization: `Bearer ${token}`,
-          Version: '2021-07-28',
+          Version: GHL_API_VERSION,
         },
       });
       
@@ -208,7 +213,7 @@ export class GHLAPI {
       const response = await this.client.get(`/locations/${locationId}/customFields`, {
         headers: {
           Authorization: `Bearer ${token}`,
-          Version: '2021-07-28',
+          Version: GHL_API_VERSION,
         },
         params: {
           fieldType: 'contact',
@@ -239,7 +244,7 @@ export class GHLAPI {
       const response = await this.client.get(`/locations/${locationId}/customFields`, {
         headers: {
           Authorization: `Bearer ${token}`,
-          Version: '2021-07-28',
+          Version: GHL_API_VERSION,
         },
         params: {
           fieldType: 'opportunity',
@@ -272,7 +277,7 @@ export class GHLAPI {
         response = await this.client.get(`/locations/${locationId}/customFields`, {
           headers: {
             Authorization: `Bearer ${token}`,
-            Version: '2021-07-28',
+            Version: GHL_API_VERSION,
           },
           params: {
             fieldType: 'object',
@@ -284,7 +289,7 @@ export class GHLAPI {
         response = await this.client.get(`/locations/${locationId}/customFields/object`, {
           headers: {
             Authorization: `Bearer ${token}`,
-            Version: '2021-07-28',
+            Version: GHL_API_VERSION,
           },
         });
       }
@@ -420,7 +425,7 @@ export class GHLAPI {
       const response = await this.client.post('/contacts', contactData, {
         headers: {
           Authorization: `Bearer ${token}`,
-          Version: '2021-07-28',
+          Version: GHL_API_VERSION,
           'Content-Type': 'application/json',
         },
         params: {
@@ -443,7 +448,7 @@ export class GHLAPI {
       const response = await this.client.get(`/contacts/${contactId}`, {
         headers: {
           Authorization: `Bearer ${token}`,
-          Version: '2021-07-28',
+          Version: GHL_API_VERSION,
         },
         params: {
           locationId,
@@ -485,7 +490,7 @@ export class GHLAPI {
       }, {
         headers: {
           Authorization: `Bearer ${token}`,
-          Version: '2021-07-28',
+          Version: GHL_API_VERSION,
           'Content-Type': 'application/json',
         },
         params: {
@@ -511,7 +516,7 @@ export class GHLAPI {
       }, {
         headers: {
           Authorization: `Bearer ${token}`,
-          Version: '2021-07-28',
+          Version: GHL_API_VERSION,
           'Content-Type': 'application/json',
         },
         params: {
@@ -652,7 +657,7 @@ export class GHLAPI {
       }, {
         headers: {
           Authorization: `Bearer ${token}`,
-          Version: '2021-07-28',
+          Version: GHL_API_VERSION,
           'Content-Type': 'application/json',
         },
       });
@@ -691,6 +696,7 @@ export class GHLAPI {
     const token = await this.getAuthToken(locationId);
     
     console.log(`[GHL API] Fetching calendars for location: ${locationId}`);
+    console.log(`[GHL API] Using GHL API v2.0 (Version: ${GHL_API_VERSION})`);
     
     // Try multiple endpoint patterns based on GHL API v2 documentation
     // DIAGNOSTIC RESULT: /calendars/ (with trailing slash) is the ONLY working endpoint
@@ -711,11 +717,13 @@ export class GHLAPI {
           locationId: endpoint.params?.locationId,
           tokenPrefix: token.substring(0, 20) + '...',
           authorizationHeader: `Bearer ${token.substring(0, 20)}...`,
+          apiVersion: GHL_API_VERSION,
+          apiVersionHeader: `Version: ${GHL_API_VERSION}`,
         });
         const response = await this.client.get(endpoint.url, {
           headers: {
             Authorization: `Bearer ${token}`,
-            Version: '2021-07-28',
+            Version: GHL_API_VERSION, // GHL API v2.0 - v1.0 is sunset
           },
           params: endpoint.params,
         });
@@ -754,17 +762,32 @@ export class GHLAPI {
         }
       } catch (error) {
         if (axios.isAxiosError(error)) {
-          console.log(`[GHL API] Endpoint ${endpoint.description} failed:`, {
+          const errorDetails = {
             status: error.response?.status,
             statusText: error.response?.statusText,
-          });
+            data: error.response?.data,
+            url: error.config?.url,
+            method: error.config?.method,
+            headers: error.config?.headers,
+          };
+          console.error(`[GHL API] Endpoint ${endpoint.description} failed:`, errorDetails);
+          
           // Continue to next endpoint unless it's the last one
           if (endpoint === endpoints[endpoints.length - 1]) {
-            // Last endpoint failed, throw error
-            throw new Error(`All calendar endpoints failed. Last error: ${error.response?.status} ${error.response?.statusText}. Response: ${JSON.stringify(error.response?.data || {})}`);
+            // Last endpoint failed, throw detailed error
+            const errorMessage = error.response?.data?.message || error.response?.data?.error || error.message || 'Unknown error';
+            const fullError = new Error(
+              `All calendar endpoints failed. Last error: ${error.response?.status} ${error.response?.statusText}. ` +
+              `Message: ${errorMessage}. ` +
+              `Response: ${JSON.stringify(error.response?.data || {})}`
+            );
+            // Attach error details to the error object for better debugging
+            (fullError as any).ghlErrorDetails = errorDetails;
+            throw fullError;
           }
         } else {
           // Non-HTTP error, throw immediately
+          console.error(`[GHL API] Non-HTTP error for endpoint ${endpoint.description}:`, error);
           throw error;
         }
       }
@@ -782,7 +805,7 @@ export class GHLAPI {
       const response = await this.client.get(`/locations/${locationId}/calendars/${calendarId}`, {
         headers: {
           Authorization: `Bearer ${token}`,
-          Version: '2021-07-28',
+          Version: GHL_API_VERSION,
         },
       });
       return response.data?.calendar || response.data?.data || response.data;
@@ -813,7 +836,7 @@ export class GHLAPI {
       const response = await this.client.get('/calendars/events', {
         headers: {
           Authorization: `Bearer ${token}`,
-          Version: '2021-07-28',
+          Version: GHL_API_VERSION,
         },
         params,
       });
@@ -842,7 +865,7 @@ export class GHLAPI {
       const response = await this.client.post('/calendars/events', requestBody, {
         headers: {
           Authorization: `Bearer ${token}`,
-          Version: '2021-07-28',
+          Version: GHL_API_VERSION,
           'Content-Type': 'application/json',
         },
       });
@@ -854,7 +877,7 @@ export class GHLAPI {
           const response = await this.client.post(`/locations/${locationId}/calendars/${calendarId}/appointments`, appointmentData, {
             headers: {
               Authorization: `Bearer ${token}`,
-              Version: '2021-07-28',
+              Version: GHL_API_VERSION,
               'Content-Type': 'application/json',
             },
           });
@@ -879,7 +902,7 @@ export class GHLAPI {
       }, {
         headers: {
           Authorization: `Bearer ${token}`,
-          Version: '2021-07-28',
+          Version: GHL_API_VERSION,
           'Content-Type': 'application/json',
         },
       });
@@ -891,7 +914,7 @@ export class GHLAPI {
           const response = await this.client.put(`/locations/${locationId}/calendars/${calendarId}/appointments/${appointmentId}`, appointmentData, {
             headers: {
               Authorization: `Bearer ${token}`,
-              Version: '2021-07-28',
+              Version: GHL_API_VERSION,
               'Content-Type': 'application/json',
             },
           });
@@ -912,7 +935,7 @@ export class GHLAPI {
       await this.client.delete(`/calendars/events/${appointmentId}`, {
         headers: {
           Authorization: `Bearer ${token}`,
-          Version: '2021-07-28',
+          Version: GHL_API_VERSION,
         },
         params: {
           locationId,
@@ -926,7 +949,7 @@ export class GHLAPI {
           await this.client.delete(`/locations/${locationId}/calendars/${calendarId}/appointments/${appointmentId}`, {
             headers: {
               Authorization: `Bearer ${token}`,
-              Version: '2021-07-28',
+              Version: GHL_API_VERSION,
             },
           });
         } catch (fallbackError) {

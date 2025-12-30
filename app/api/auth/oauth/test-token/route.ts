@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${oauthToken.accessToken}`,
-          'Version': '2021-07-28',
+          'Version': '2024-01-01',
           'Content-Type': 'application/json',
         },
       });
