@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 import { getIntegrationConfig, initDatabase } from '@/lib/db';
-import { getLocationIdFromRequest } from '@/lib/request-utils';
+import { getLocationId } from '@/lib/request-utils';
 
 /**
  * GET /api/sync/appointments/status
@@ -9,7 +9,7 @@ import { getLocationIdFromRequest } from '@/lib/request-utils';
  */
 export async function GET(request: NextRequest) {
   try {
-    const locationId = getLocationIdFromRequest(request);
+    const locationId = await getLocationId(request);
     
     if (!locationId) {
       return NextResponse.json(

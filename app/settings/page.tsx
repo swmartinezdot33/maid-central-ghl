@@ -555,10 +555,36 @@ function SettingsPageContent() {
                             <div className="mt-3 p-3 bg-white rounded border border-primary-200">
                               <p className="text-sm font-medium text-gray-700 mb-1">Last Poll Status</p>
                               <p className="text-sm text-gray-600">
-                                Last poll: {new Date(config.lastQuotePollAt).toLocaleString()}
+                                Last poll: {(() => {
+                                  try {
+                                    const lastPollDate = typeof config.lastQuotePollAt === 'number' 
+                                      ? new Date(config.lastQuotePollAt) 
+                                      : new Date(config.lastQuotePollAt);
+                                    return isNaN(lastPollDate.getTime()) ? 'Never' : lastPollDate.toLocaleString();
+                                  } catch {
+                                    return 'Never';
+                                  }
+                                })()}
                               </p>
                               <p className="text-xs text-gray-500 mt-1">
-                                Next poll in approximately {Math.max(0, Math.round(((config.quotePollingInterval || 15) * 60 * 1000 - (Date.now() - config.lastQuotePollAt)) / 1000 / 60))} minutes
+                                {(() => {
+                                  try {
+                                    const lastPollTime = typeof config.lastQuotePollAt === 'number' 
+                                      ? config.lastQuotePollAt 
+                                      : new Date(config.lastQuotePollAt).getTime();
+                                    const intervalMs = (config.quotePollingInterval || 15) * 60 * 1000;
+                                    const timeSinceLastPoll = Date.now() - lastPollTime;
+                                    const timeUntilNextPoll = intervalMs - timeSinceLastPoll;
+                                    const minutesUntilNext = Math.round(timeUntilNextPoll / 1000 / 60);
+                                    
+                                    if (isNaN(lastPollTime) || minutesUntilNext < 0) {
+                                      return 'Next poll will run at the scheduled interval';
+                                    }
+                                    return `Next poll in approximately ${minutesUntilNext} minute${minutesUntilNext !== 1 ? 's' : ''}`;
+                                  } catch {
+                                    return 'Next poll will run at the scheduled interval';
+                                  }
+                                })()}
                               </p>
                             </div>
                           )}

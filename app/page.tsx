@@ -93,8 +93,12 @@ export default function Home() {
           setStatus(data);
         }
         
-        if (data.config?.syncAppointments) {
-          fetch('/api/sync/appointments/status')
+        if (data.config?.syncAppointments && locationId) {
+          fetch(`/api/sync/appointments/status?locationId=${locationId}`, {
+            headers: {
+              'x-ghl-location-id': locationId,
+            },
+          })
             .then(async (response) => {
               if (response.ok) {
                 const appointmentData = await response.json();
