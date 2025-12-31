@@ -286,25 +286,77 @@ export class MaidCentralAPI {
     // covers common quote properties. This keeps the field mapping UI working without
     // depending on a deprecated /quotes endpoint.
     return [
+      // Lead/Quote Identifiers
       'LeadId',
+      'QuoteId',
       'CustomerInformationId',
       'HomeInformationId',
+      
+      // Customer Information
       'FirstName',
       'LastName',
       'Email',
       'Phone',
+      'Mobile',
       'PostalCode',
+      
+      // Quote Status
       'StatusId',
       'StatusName',
+      'QuoteNumber',
+      'QuoteTotal',
+      'TotalAmount',
+      'Amount',
+      'Price',
+      
+      // Quote URL
       'MaidServiceQuoteUrl',
+      'QuoteUrl',
+      
+      // Home Address
       'HomeAddress1',
+      'HomeAddress2',
       'HomeCity',
       'HomeRegion',
+      'HomeState',
       'HomePostalCode',
+      'HomeZipCode',
+      'HomeCountry',
+      
+      // Billing Address
       'BillingAddress1',
+      'BillingAddress2',
       'BillingCity',
       'BillingRegion',
+      'BillingState',
       'BillingPostalCode',
+      'BillingZipCode',
+      'BillingCountry',
+      
+      // Service Information
+      'ScopeGroupId',
+      'ScopeGroupName',
+      'ServiceType',
+      'ServiceName',
+      'ScopesOfWork',
+      
+      // Dates
+      'CreatedDate',
+      'CreatedAt',
+      'UpdatedDate',
+      'UpdatedAt',
+      'QuoteDate',
+      'ScheduledDate',
+      
+      // Additional Fields
+      'Notes',
+      'Description',
+      'Questions',
+      'UTMSource',
+      'UTMMedium',
+      'UTMCampaign',
+      'UTMTerm',
+      'UTMContent',
     ];
   }
 

@@ -1,7 +1,8 @@
 import { maidCentralAPI } from './maid-central';
 import { ghlAPI } from './ghl';
-import { IntegrationConfig } from './db';
+import { IntegrationConfig, getFieldMappings } from './db';
 import { markQuoteAsSynced, isQuoteSynced } from './db';
+import { mapQuoteToGHL } from './quote-mapper';
 
 /**
  * Sync a quote from MaidCentral to CRM
@@ -52,14 +53,27 @@ export async function syncQuote(
       ...leadData,
     } : { id: quoteId };
 
-    // Automatically map fields
-    const prefix = config.customFieldPrefix || 'maidcentral_quote_';
-    let contactData = ghlAPI.autoMapFields(quote, prefix);
-
-    // Ensure custom fields exist in CRM if auto-create is enabled
-    if (config.autoCreateFields) {
-      const customFieldNames = Object.keys(contactData).filter(key => key.startsWith(prefix));
-      await ghlAPI.ensureCustomFields(config.ghlLocationId, customFieldNames, prefix);
+    // Get field mappings from database
+    const fieldMappings = await getFieldMappings();
+    
+    // Map quote data to GHL format using user-defined mappings
+    let contactData: Record<string, any> = {};
+    
+    if (fieldMappings.length > 0) {
+      // Use user-defined mappings
+      console.log(`[Quote Sync] Using ${fieldMappings.length} field mappings`);
+      contactData = await mapQuoteToGHL(quote, fieldMappings);
+    } else {
+      // Fallback to auto-mapping if no mappings are configured
+      console.log(`[Quote Sync] No field mappings found, using auto-mapping`);
+      const prefix = config.customFieldPrefix || 'maidcentral_quote_';
+      contactData = ghlAPI.autoMapFields(quote, prefix);
+      
+      // Ensure custom fields exist in CRM if auto-create is enabled
+      if (config.autoCreateFields) {
+        const customFieldNames = Object.keys(contactData).filter(key => key.startsWith(prefix));
+        await ghlAPI.ensureCustomFields(config.ghlLocationId, customFieldNames, prefix);
+      }
     }
 
     // Create contact in CRM
