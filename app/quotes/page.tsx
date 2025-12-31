@@ -51,10 +51,26 @@ export default function QuotesPage() {
       const data = await response.json();
 
       if (response.ok && data.quote) {
-        setFoundQuote(data.quote);
+        // Map Maid Central fields to display format
+        const rawQuote = data.quote;
+        const mappedQuote: Quote = {
+          id: rawQuote.LeadId || rawQuote.leadId || rawQuote.Id || rawQuote.id || lookupId,
+          quoteNumber: rawQuote.QuoteNumber || rawQuote.quoteNumber || rawQuote.QuoteId || rawQuote.quoteId,
+          customerName: rawQuote.FirstName && rawQuote.LastName 
+            ? `${rawQuote.FirstName} ${rawQuote.LastName}` 
+            : rawQuote.CustomerName || rawQuote.customerName || rawQuote.Name || rawQuote.name,
+          customerEmail: rawQuote.Email || rawQuote.email || rawQuote.EmailAddress || rawQuote.emailAddress,
+          customerPhone: rawQuote.Phone || rawQuote.phone || rawQuote.PhoneNumber || rawQuote.phoneNumber || rawQuote.Mobile || rawQuote.mobile,
+          totalAmount: rawQuote.QuoteTotal || rawQuote.quoteTotal || rawQuote.TotalAmount || rawQuote.totalAmount || rawQuote.Amount || rawQuote.amount,
+          status: rawQuote.StatusName || rawQuote.statusName || rawQuote.Status || rawQuote.status,
+          createdAt: rawQuote.CreatedDate || rawQuote.createdDate || rawQuote.CreatedAt || rawQuote.createdAt,
+          // Include all raw data for debugging
+          ...rawQuote,
+        };
+        setFoundQuote(mappedQuote);
         setMessage({ type: 'success', text: 'Quote found!' });
       } else {
-        setMessage({ type: 'error', text: data.error || 'Quote not found' });
+        setMessage({ type: 'error', text: data.error || data.message || 'Quote not found' });
       }
     } catch (error) {
       setMessage({ type: 'error', text: 'Failed to lookup quote' });
@@ -152,6 +168,10 @@ export default function QuotesPage() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm font-medium text-gray-500">Quote ID</p>
+                <p className="text-base text-gray-900 mt-1 font-mono text-sm">{foundQuote.id}</p>
+              </div>
               {foundQuote.quoteNumber && (
                 <div>
                   <p className="text-sm font-medium text-gray-500">Quote Number</p>
@@ -179,7 +199,7 @@ export default function QuotesPage() {
               {foundQuote.totalAmount && (
                 <div>
                   <p className="text-sm font-medium text-gray-500">Total Amount</p>
-                  <p className="text-base text-gray-900 mt-1">${foundQuote.totalAmount.toFixed(2)}</p>
+                  <p className="text-base text-gray-900 mt-1">${typeof foundQuote.totalAmount === 'number' ? foundQuote.totalAmount.toFixed(2) : foundQuote.totalAmount}</p>
                 </div>
               )}
               {foundQuote.status && (
@@ -188,11 +208,23 @@ export default function QuotesPage() {
                   <Badge variant="info" className="mt-1">{foundQuote.status}</Badge>
                 </div>
               )}
-              <div>
-                <p className="text-sm font-medium text-gray-500">Quote ID</p>
-                <p className="text-base text-gray-900 mt-1 font-mono text-sm">{foundQuote.id}</p>
-              </div>
+              {foundQuote.createdAt && (
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Created Date</p>
+                  <p className="text-base text-gray-900 mt-1">{new Date(foundQuote.createdAt).toLocaleDateString()}</p>
+                </div>
+              )}
             </div>
+            
+            {/* Show raw data for debugging if no mapped fields found */}
+            {!foundQuote.quoteNumber && !foundQuote.customerName && !foundQuote.customerEmail && (
+              <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                <p className="text-sm font-medium text-gray-700 mb-2">Raw Quote Data (for debugging):</p>
+                <pre className="text-xs text-gray-600 overflow-auto max-h-96">
+                  {JSON.stringify(foundQuote, null, 2)}
+                </pre>
+              </div>
+            )}
           </Card>
         )}
       </div>
