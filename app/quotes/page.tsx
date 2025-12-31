@@ -82,23 +82,38 @@ export default function QuotesPage() {
   const handleSync = async () => {
     if (!foundQuote) return;
 
+    if (!ghlData?.locationId) {
+      setMessage({ type: 'error', text: 'Location ID is required. Please ensure you are accessing this app through CRM.' });
+      return;
+    }
+
     try {
       setSyncing(true);
       setMessage(null);
 
-      const response = await fetch(`/api/webhook/quote?quoteId=${foundQuote.id}`, {
+      const response = await fetch(`/api/webhook/quote?quoteId=${foundQuote.id}&locationId=${ghlData.locationId}`, {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          quoteId: foundQuote.id,
+        }),
       });
 
       const data = await response.json();
 
-      if (response.ok) {
-        setMessage({ type: 'success', text: data.message || 'Quote synced successfully!' });
+      if (response.ok && data.success) {
+        setMessage({ 
+          type: 'success', 
+          text: data.message || `Quote synced successfully! Contact ID: ${data.contactId || 'N/A'}` 
+        });
       } else {
-        setMessage({ type: 'error', text: data.error || 'Failed to sync quote' });
+        setMessage({ type: 'error', text: data.error || data.message || 'Failed to sync quote' });
       }
     } catch (error) {
-      setMessage({ type: 'error', text: 'Failed to sync quote' });
+      console.error('Sync error:', error);
+      setMessage({ type: 'error', text: `Failed to sync quote: ${error instanceof Error ? error.message : 'Unknown error'}` });
     } finally {
       setSyncing(false);
     }
