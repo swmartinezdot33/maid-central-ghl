@@ -31,6 +31,10 @@ export async function syncMaidCentralToGHL(mcAppointment: any, locationId?: stri
   try {
     const config = await getIntegrationConfig(locationId);
     
+    if (!config?.enabled) {
+      return { success: false, error: 'Integration is disabled' };
+    }
+    
     if (!config?.syncAppointments) {
       return { success: false, error: 'Appointment syncing is disabled' };
     }
@@ -111,6 +115,10 @@ export async function syncMaidCentralToGHL(mcAppointment: any, locationId?: stri
 export async function syncGHLToMaidCentral(ghlAppointment: any, locationId?: string): Promise<SyncResult> {
   try {
     const config = await getIntegrationConfig(locationId);
+    
+    if (!config?.enabled) {
+      return { success: false, error: 'Integration is disabled' };
+    }
     
     if (!config?.syncAppointments) {
       return { success: false, error: 'Appointment syncing is disabled' };
@@ -293,7 +301,13 @@ export async function syncAllAppointments(locationId?: string): Promise<{ synced
   try {
     const config = await getIntegrationConfig(locationId);
     
+    if (!config?.enabled) {
+      console.log(`[Appointment Sync] Integration is disabled for location ${locationId}`);
+      return { synced: 0, errors: 0, results: [] };
+    }
+    
     if (!config?.syncAppointments) {
+      console.log(`[Appointment Sync] Appointment syncing is disabled for location ${locationId}`);
       return { synced: 0, errors: 0, results: [] };
     }
 

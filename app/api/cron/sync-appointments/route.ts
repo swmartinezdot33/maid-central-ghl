@@ -53,8 +53,17 @@ export async function POST(request: NextRequest) {
     for (const row of locations) {
       const locationId = row.location_id as string;
       try {
-        // Check if appointment syncing is enabled for this location
+        // Check if integration and appointment syncing is enabled for this location
         const config = await getIntegrationConfig(locationId);
+        if (!config?.enabled) {
+          results.push({ 
+            locationId, 
+            success: true, 
+            skipped: true,
+            message: 'Integration is disabled for this location' 
+          });
+          continue;
+        }
         if (!config?.syncAppointments) {
           results.push({ 
             locationId, 

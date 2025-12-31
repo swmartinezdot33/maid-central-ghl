@@ -91,6 +91,26 @@ export default function QuotesPage() {
       setSyncing(true);
       setMessage(null);
 
+      // Check config first to provide better error messages
+      const configResponse = await fetch(`/api/config?locationId=${ghlData.locationId}`);
+      const configData = await configResponse.json();
+      
+      if (!configData.config?.enabled) {
+        setMessage({ 
+          type: 'error', 
+          text: 'Integration is disabled. Please enable it in Settings first.' 
+        });
+        return;
+      }
+
+      if (!configData.config?.syncQuotes) {
+        setMessage({ 
+          type: 'error', 
+          text: 'Quote syncing is disabled. Please enable it in Settings > Quote Sync.' 
+        });
+        return;
+      }
+
       const response = await fetch(`/api/webhook/quote?quoteId=${foundQuote.id}&locationId=${ghlData.locationId}`, {
         method: 'POST',
         headers: {
@@ -106,7 +126,7 @@ export default function QuotesPage() {
       if (response.ok && data.success) {
         setMessage({ 
           type: 'success', 
-          text: data.message || `Quote synced successfully! Contact ID: ${data.contactId || 'N/A'}` 
+          text: data.message || `Quote synced successfully! Contact ID: ${data.contactId || 'N/A'}${data.opportunityId ? `, Opportunity ID: ${data.opportunityId}` : ''}` 
         });
       } else {
         setMessage({ type: 'error', text: data.error || data.message || 'Failed to sync quote' });
@@ -182,64 +202,68 @@ export default function QuotesPage() {
               </Button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <p className="text-sm font-medium text-gray-500">Quote ID</p>
-                <p className="text-base text-gray-900 mt-1 font-mono text-sm">{foundQuote.id}</p>
+            {/* Key Fields Section */}
+            <div className="mb-6">
+              <h3 className="text-sm font-semibold text-gray-700 mb-4">Key Information</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Quote ID</p>
+                  <p className="text-base text-gray-900 mt-1 font-mono text-sm">{foundQuote.id}</p>
+                </div>
+                {foundQuote.quoteNumber && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Quote Number</p>
+                    <p className="text-base text-gray-900 mt-1">{foundQuote.quoteNumber}</p>
+                  </div>
+                )}
+                {foundQuote.customerName && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Customer Name</p>
+                    <p className="text-base text-gray-900 mt-1">{foundQuote.customerName}</p>
+                  </div>
+                )}
+                {foundQuote.customerEmail && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Customer Email</p>
+                    <p className="text-base text-gray-900 mt-1">{foundQuote.customerEmail}</p>
+                  </div>
+                )}
+                {foundQuote.customerPhone && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Customer Phone</p>
+                    <p className="text-base text-gray-900 mt-1">{foundQuote.customerPhone}</p>
+                  </div>
+                )}
+                {foundQuote.totalAmount && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Total Amount</p>
+                    <p className="text-base text-gray-900 mt-1">${typeof foundQuote.totalAmount === 'number' ? foundQuote.totalAmount.toFixed(2) : foundQuote.totalAmount}</p>
+                  </div>
+                )}
+                {foundQuote.status && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Status</p>
+                    <Badge variant="info" className="mt-1">{foundQuote.status}</Badge>
+                  </div>
+                )}
+                {foundQuote.createdAt && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Created Date</p>
+                    <p className="text-base text-gray-900 mt-1">{new Date(foundQuote.createdAt).toLocaleDateString()}</p>
+                  </div>
+                )}
               </div>
-              {foundQuote.quoteNumber && (
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Quote Number</p>
-                  <p className="text-base text-gray-900 mt-1">{foundQuote.quoteNumber}</p>
-                </div>
-              )}
-              {foundQuote.customerName && (
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Customer Name</p>
-                  <p className="text-base text-gray-900 mt-1">{foundQuote.customerName}</p>
-                </div>
-              )}
-              {foundQuote.customerEmail && (
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Customer Email</p>
-                  <p className="text-base text-gray-900 mt-1">{foundQuote.customerEmail}</p>
-                </div>
-              )}
-              {foundQuote.customerPhone && (
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Customer Phone</p>
-                  <p className="text-base text-gray-900 mt-1">{foundQuote.customerPhone}</p>
-                </div>
-              )}
-              {foundQuote.totalAmount && (
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Total Amount</p>
-                  <p className="text-base text-gray-900 mt-1">${typeof foundQuote.totalAmount === 'number' ? foundQuote.totalAmount.toFixed(2) : foundQuote.totalAmount}</p>
-                </div>
-              )}
-              {foundQuote.status && (
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Status</p>
-                  <Badge variant="info" className="mt-1">{foundQuote.status}</Badge>
-                </div>
-              )}
-              {foundQuote.createdAt && (
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Created Date</p>
-                  <p className="text-base text-gray-900 mt-1">{new Date(foundQuote.createdAt).toLocaleDateString()}</p>
-                </div>
-              )}
             </div>
-            
-            {/* Show raw data for debugging if no mapped fields found */}
-            {!foundQuote.quoteNumber && !foundQuote.customerName && !foundQuote.customerEmail && (
-              <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                <p className="text-sm font-medium text-gray-700 mb-2">Raw Quote Data (for debugging):</p>
-                <pre className="text-xs text-gray-600 overflow-auto max-h-96">
+
+            {/* All Quote Data Section */}
+            <div className="mt-6 border-t pt-6">
+              <h3 className="text-sm font-semibold text-gray-700 mb-4">Complete Quote Payload</h3>
+              <div className="bg-gray-50 rounded-lg p-4 overflow-auto max-h-96">
+                <pre className="text-xs text-gray-600 whitespace-pre-wrap break-words">
                   {JSON.stringify(foundQuote, null, 2)}
                 </pre>
               </div>
-            )}
+            </div>
           </Card>
         )}
       </div>
