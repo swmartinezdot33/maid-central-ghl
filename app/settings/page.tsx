@@ -82,6 +82,10 @@ function SettingsPageContent() {
   const [mappings, setMappings] = useState<FieldMapping[]>([]);
   const [savingMappings, setSavingMappings] = useState(false);
   const [loadingFields, setLoadingFields] = useState(false);
+  const [teams, setTeams] = useState<Array<{ id: string; name: string }>>([]);
+  const [teamMappings, setTeamMappings] = useState<Array<{ id?: number; maidCentralTeamId: string; maidCentralTeamName?: string; ghlCalendarId: string; ghlCalendarName?: string; enabled: boolean }>>([]);
+  const [loadingTeams, setLoadingTeams] = useState(false);
+  const [savingTeamMapping, setSavingTeamMapping] = useState(false);
 
   useEffect(() => {
     if (ghlData?.locationId) {
@@ -238,6 +242,93 @@ function SettingsPageContent() {
     setMappings(mappings.filter((_, i) => i !== index));
   };
 
+  const loadTeamsAndMappings = async () => {
+    if (!ghlData?.locationId) return;
+    
+    try {
+      setLoadingTeams(true);
+      
+      // Load MaidCentral teams
+      const teamsRes = await fetch('/api/maid-central/teams', {
+        headers: { 'x-ghl-location-id': ghlData.locationId },
+      });
+      if (teamsRes.ok) {
+        const teamsData = await teamsRes.json();
+        setTeams(teamsData.teams || []);
+      }
+      
+      // Load team calendar mappings
+      const mappingsRes = await fetch('/api/team-calendar-mappings', {
+        headers: { 'x-ghl-location-id': ghlData.locationId },
+      });
+      if (mappingsRes.ok) {
+        const mappingsData = await mappingsRes.json();
+        setTeamMappings(mappingsData.mappings || []);
+      }
+    } catch (error) {
+      console.error('Error loading teams and mappings:', error);
+    } finally {
+      setLoadingTeams(false);
+    }
+  };
+
+  const saveTeamMapping = async (mapping: { maidCentralTeamId: string; maidCentralTeamName?: string; ghlCalendarId: string; ghlCalendarName?: string; enabled: boolean }) => {
+    if (!ghlData?.locationId) {
+      setMessage({ type: 'error', text: 'Location ID is required' });
+      return;
+    }
+
+    setSavingTeamMapping(true);
+    setMessage(null);
+
+    try {
+      const response = await fetch('/api/team-calendar-mappings', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-ghl-location-id': ghlData.locationId,
+        },
+        body: JSON.stringify(mapping),
+      });
+
+      if (response.ok) {
+        await loadTeamsAndMappings();
+        setMessage({ type: 'success', text: 'Team mapping saved successfully!' });
+      } else {
+        const data = await response.json();
+        setMessage({ type: 'error', text: data.error || 'Failed to save mapping' });
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Failed to save mapping' });
+    } finally {
+      setSavingTeamMapping(false);
+    }
+  };
+
+  const deleteTeamMapping = async (maidCentralTeamId: string) => {
+    if (!ghlData?.locationId) {
+      setMessage({ type: 'error', text: 'Location ID is required' });
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/team-calendar-mappings?maidCentralTeamId=${maidCentralTeamId}`, {
+        method: 'DELETE',
+        headers: { 'x-ghl-location-id': ghlData.locationId },
+      });
+
+      if (response.ok) {
+        await loadTeamsAndMappings();
+        setMessage({ type: 'success', text: 'Team mapping deleted successfully!' });
+      } else {
+        const data = await response.json();
+        setMessage({ type: 'error', text: data.error || 'Failed to delete mapping' });
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Failed to delete mapping' });
+    }
+  };
+
   const saveMappings = async () => {
     if (!ghlData?.locationId) {
       setMessage({ type: 'error', text: 'Location ID is required' });
@@ -364,6 +455,7 @@ function SettingsPageContent() {
             <TabsTrigger value="integration">Integration Controls</TabsTrigger>
             <TabsTrigger value="quote-sync">Quote Sync</TabsTrigger>
             <TabsTrigger value="appointments">Appointment Sync</TabsTrigger>
+            <TabsTrigger value="team-mappings">Team Calendar Mappings</TabsTrigger>
             <TabsTrigger value="field-mapping">Field Mapping</TabsTrigger>
             <TabsTrigger value="tags">Tags & Fields</TabsTrigger>
           </TabsList>
@@ -665,6 +757,108 @@ function SettingsPageContent() {
                       </Button>
                     </div>
                   </>
+                )}
+              </div>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="team-mappings">
+            <Card padding="lg">
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900 mb-2">Team Calendar Mappings</h2>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Map each MaidCentral team/employee to a CRM calendar. This enables bidirectional sync where appointments
+                    from each team sync to their corresponding calendar, preventing conflicts and maintaining team boundaries.
+                  </p>
+                </div>
+
+                {!config?.enabled || !config?.syncAppointments ? (
+                  <Alert variant="warning">
+                    Enable integration and appointment syncing in the Integration Controls and Appointment Sync tabs to use team mappings.
+                  </Alert>
+                ) : loadingTeams ? (
+                  <div className="flex items-center justify-center py-8">
+                    <LoadingSpinner size="lg" />
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {teams.length === 0 ? (
+                      <Alert variant="info">
+                        <p className="font-medium mb-2">No teams found</p>
+                        <p className="text-sm">Make sure your MaidCentral credentials are configured and teams exist in your account.</p>
+                      </Alert>
+                    ) : (
+                      <>
+                        {teams.map((team) => {
+                          const existingMapping = teamMappings.find(m => m.maidCentralTeamId === team.id);
+                          return (
+                            <Card key={team.id} padding="md" className="bg-gray-50">
+                              <div className="flex items-center justify-between gap-4">
+                                <div className="flex-1">
+                                  <h3 className="font-semibold text-gray-900">{team.name}</h3>
+                                  <p className="text-sm text-gray-500">Team ID: {team.id}</p>
+                                </div>
+                                <div className="flex items-center gap-4 flex-1 max-w-md">
+                                  <Select
+                                    options={[
+                                      { value: '', label: 'Select calendar...' },
+                                      ...calendars.map(c => ({ value: c.id, label: c.name }))
+                                    ]}
+                                    value={existingMapping?.ghlCalendarId || ''}
+                                    onChange={(e) => {
+                                      if (e.target.value) {
+                                        const selectedCalendar = calendars.find(c => c.id === e.target.value);
+                                        saveTeamMapping({
+                                          maidCentralTeamId: team.id,
+                                          maidCentralTeamName: team.name,
+                                          ghlCalendarId: e.target.value,
+                                          ghlCalendarName: selectedCalendar?.name,
+                                          enabled: true,
+                                        });
+                                      }
+                                    }}
+                                    disabled={!config?.enabled || !config?.syncAppointments || savingTeamMapping}
+                                    className="flex-1"
+                                  />
+                                  {existingMapping && (
+                                    <Button
+                                      variant="danger"
+                                      size="sm"
+                                      onClick={() => deleteTeamMapping(team.id)}
+                                      disabled={savingTeamMapping}
+                                    >
+                                      <TrashIcon className="w-4 h-4" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                              {existingMapping && (
+                                <div className="mt-2 flex items-center gap-2">
+                                  <StatusIndicator
+                                    status={existingMapping.enabled ? 'connected' : 'disconnected'}
+                                    label={existingMapping.enabled ? 'Mapped' : 'Disabled'}
+                                  />
+                                  <span className="text-xs text-gray-500">
+                                    → {existingMapping.ghlCalendarName || existingMapping.ghlCalendarId}
+                                  </span>
+                                </div>
+                              )}
+                            </Card>
+                          );
+                        })}
+                        <Alert variant="info">
+                          <p className="font-medium mb-2">How Team Mappings Work:</p>
+                          <ul className="text-sm space-y-1 list-disc list-inside">
+                            <li>Each MaidCentral team maps to exactly one CRM calendar (1:1 mapping)</li>
+                            <li>When appointments are created in MaidCentral, they sync to the mapped calendar</li>
+                            <li>When appointments are created in CRM, availability is checked across ALL teams before creating in MaidCentral</li>
+                            <li>This prevents duplicate and overlapping appointments across all teams</li>
+                          </ul>
+                        </Alert>
+                      </>
+                    )}
+                  </div>
                 )}
               </div>
             </Card>

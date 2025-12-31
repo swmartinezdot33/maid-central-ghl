@@ -369,6 +369,187 @@ export class MaidCentralAPI {
   // - https://support.maidcentral.com/apidocs/online-booking-to-api-workflow
   // - https://support.maidcentral.com/apidocs/one-page-maidcentral-api-workflow
 
+  // Get teams/employees from MaidCentral
+  async getTeams(locationId?: string): Promise<any[]> {
+    const token = await this.getAuthHeader(locationId);
+    
+    // Try multiple endpoint patterns
+    const endpoints = [
+      `/api/Teams`,
+      `/api/Employees`,
+      `/api/Staff`,
+      `/api/Team/Teams`,
+      `/api/Employee/Employees`,
+    ];
+
+    let lastError: any = null;
+    
+    for (const endpoint of endpoints) {
+      try {
+        const url = `${MAID_CENTRAL_API_BASE_URL}${endpoint}`;
+        const response = await axios.get(url, {
+          headers: {
+            Authorization: token,
+          },
+        });
+        const data = response.data?.Result || response.data?.data || response.data;
+        if (Array.isArray(data)) {
+          return data;
+        } else if (data && typeof data === 'object') {
+          // Sometimes teams are in a nested structure
+          const teams = data.teams || data.employees || data.staff || data.Teams || data.Employees || data.Staff;
+          if (Array.isArray(teams)) {
+            return teams;
+          }
+        }
+      } catch (error) {
+        lastError = error;
+        console.log(`[Maid Central API] Endpoint ${endpoint} failed, trying next...`);
+        continue;
+      }
+    }
+    
+    console.warn('[Maid Central API] All team endpoints failed, returning empty array');
+    if (lastError) {
+      console.error('[Maid Central API] Last error:', lastError);
+    }
+    return [];
+  }
+
+  // Get appointments for a specific team
+  async getTeamAppointments(
+    teamId: string | number,
+    filters?: { startDate?: string; endDate?: string; status?: string },
+    locationId?: string
+  ): Promise<any[]> {
+    const token = await this.getAuthHeader(locationId);
+    
+    // Try multiple endpoint patterns
+    const endpoints = [
+      `/api/Team/${teamId}/Appointments`,
+      `/api/Team/${teamId}/Bookings`,
+      `/api/Employee/${teamId}/Appointments`,
+      `/api/Appointments?teamId=${teamId}`,
+      `/api/Bookings?teamId=${teamId}`,
+    ];
+
+    const params: any = {};
+    if (filters?.startDate) params.startDate = filters.startDate;
+    if (filters?.endDate) params.endDate = filters.endDate;
+    if (filters?.status) params.status = filters.status;
+
+    let lastError: any = null;
+    
+    for (const endpoint of endpoints) {
+      try {
+        const url = `${MAID_CENTRAL_API_BASE_URL}${endpoint}`;
+        const response = await axios.get(url, {
+          headers: {
+            Authorization: token,
+          },
+          params: endpoint.includes('?') ? {} : params, // Only use params if not in URL
+        });
+        const data = response.data?.Result || response.data?.data || response.data;
+        if (Array.isArray(data)) {
+          return data;
+        } else if (data && typeof data === 'object') {
+          const appointments = data.appointments || data.bookings || data.Appointments || data.Bookings;
+          if (Array.isArray(appointments)) {
+            return appointments;
+          }
+        }
+      } catch (error) {
+        lastError = error;
+        console.log(`[Maid Central API] Team appointments endpoint ${endpoint} failed, trying next...`);
+        continue;
+      }
+    }
+    
+    // Fallback: Get all appointments and filter by team
+    try {
+      const allAppointments = await this.getAppointments(filters, locationId);
+      return allAppointments.filter((appt: any) => {
+        const apptTeamId = appt.TeamId || appt.teamId || appt.EmployeeId || appt.employeeId || appt.AssignedToId || appt.assignedToId;
+        return String(apptTeamId) === String(teamId);
+      });
+    } catch (error) {
+      console.error('[Maid Central API] Error getting team appointments:', error);
+      return [];
+    }
+  }
+
+  // Check availability across all teams
+  async checkAvailabilityAcrossTeams(
+    startTime: string | Date,
+    endTime: string | Date,
+    excludeAppointmentId?: string | number,
+    locationId?: string
+  ): Promise<{ available: boolean; conflicts: Array<{ teamId: string; teamName?: string; appointment: any }> }> {
+    try {
+      const startDate = typeof startTime === 'string' ? startTime : startTime.toISOString().split('T')[0];
+      const endDate = typeof endTime === 'string' ? endTime : endTime.toISOString().split('T')[0];
+      
+      // Get all teams
+      const teams = await this.getTeams(locationId);
+      
+      // Get all appointments in the time range
+      const allAppointments = await this.getAppointments(
+        { startDate, endDate },
+        locationId
+      );
+      
+      // Filter out excluded appointment
+      const relevantAppointments = excludeAppointmentId
+        ? allAppointments.filter((appt: any) => {
+            const apptId = appt.Id || appt.AppointmentId || appt.id;
+            return String(apptId) !== String(excludeAppointmentId);
+          })
+        : allAppointments;
+      
+      // Check for overlaps
+      const start = typeof startTime === 'string' ? new Date(startTime) : startTime;
+      const end = typeof endTime === 'string' ? new Date(endTime) : endTime;
+      
+      const conflicts: Array<{ teamId: string; teamName?: string; appointment: any }> = [];
+      
+      for (const appt of relevantAppointments) {
+        const apptStart = new Date(appt.StartTime || appt.ScheduledStart || appt.ServiceDate || appt.Date);
+        const apptEnd = new Date(appt.EndTime || appt.ScheduledEnd || appt.ServiceEndTime);
+        
+        // Check for overlap
+        if (apptStart < end && apptEnd > start) {
+          const teamId = appt.TeamId || appt.teamId || appt.EmployeeId || appt.employeeId || appt.AssignedToId || appt.assignedToId;
+          const teamName = appt.TeamName || appt.teamName || appt.EmployeeName || appt.employeeName || appt.AssignedTo || appt.assignedTo;
+          
+          // Find team name from teams list if not in appointment
+          let foundTeamName = teamName;
+          if (!foundTeamName && teamId) {
+            const team = teams.find((t: any) => String(t.Id || t.id || t.TeamId || t.teamId) === String(teamId));
+            foundTeamName = team?.Name || team?.name || team?.TeamName || team?.teamName;
+          }
+          
+          conflicts.push({
+            teamId: String(teamId || 'unknown'),
+            teamName: foundTeamName,
+            appointment: appt,
+          });
+        }
+      }
+      
+      return {
+        available: conflicts.length === 0,
+        conflicts,
+      };
+    } catch (error) {
+      console.error('[Maid Central API] Error checking availability across teams:', error);
+      // On error, assume not available to be safe
+      return {
+        available: false,
+        conflicts: [],
+      };
+    }
+  }
+
   async getAppointments(filters?: { startDate?: string; endDate?: string; status?: string; leadId?: string | number }, locationId?: string): Promise<any[]> {
     const token = await this.getAuthHeader(locationId);
     

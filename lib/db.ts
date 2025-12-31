@@ -276,6 +276,39 @@ export async function initDatabase(): Promise<void> {
       console.log('Indexes might already exist:', error);
     }
 
+    // Create table for team-to-calendar mappings
+    await sql`
+      CREATE TABLE IF NOT EXISTS team_calendar_mappings (
+        id SERIAL PRIMARY KEY,
+        location_id TEXT NOT NULL,
+        maid_central_team_id TEXT NOT NULL,
+        maid_central_team_name TEXT,
+        ghl_calendar_id TEXT NOT NULL,
+        ghl_calendar_name TEXT,
+        enabled BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(location_id, maid_central_team_id),
+        UNIQUE(location_id, ghl_calendar_id)
+      )
+    `;
+
+    // Create indexes for team calendar mappings
+    try {
+      await sql`CREATE INDEX IF NOT EXISTS idx_team_mappings_location_team ON team_calendar_mappings(location_id, maid_central_team_id)`;
+      await sql`CREATE INDEX IF NOT EXISTS idx_team_mappings_location_calendar ON team_calendar_mappings(location_id, ghl_calendar_id)`;
+    } catch (error) {
+      console.log('Team mapping indexes might already exist:', error);
+    }
+
+    // Add team_id and employee_id columns to appointment_syncs table
+    try {
+      await sql`ALTER TABLE appointment_syncs ADD COLUMN IF NOT EXISTS team_id TEXT`;
+      await sql`ALTER TABLE appointment_syncs ADD COLUMN IF NOT EXISTS employee_id TEXT`;
+    } catch (error) {
+      console.log('Team/employee columns might already exist:', error);
+    }
+
     // OAuth tokens table for marketplace app installations
     await sql`
       CREATE TABLE IF NOT EXISTS ghl_oauth_tokens (
@@ -779,6 +812,8 @@ export interface AppointmentSync {
   maidCentralAppointmentId?: string;
   ghlAppointmentId?: string;
   ghlCalendarId?: string;
+  teamId?: string;
+  employeeId?: string;
   maidCentralLastModified?: Date;
   ghlLastModified?: Date;
   syncDirection?: 'mc_to_ghl' | 'ghl_to_mc' | 'bidirectional';
@@ -806,6 +841,8 @@ export async function storeAppointmentSync(sync: AppointmentSync): Promise<void>
         maid_central_appointment_id = ${sync.maidCentralAppointmentId || null},
         ghl_appointment_id = ${sync.ghlAppointmentId || null},
         ghl_calendar_id = ${sync.ghlCalendarId || null},
+        team_id = ${sync.teamId || null},
+        employee_id = ${sync.employeeId || null},
         maid_central_last_modified = ${sync.maidCentralLastModified || null},
         ghl_last_modified = ${sync.ghlLastModified || null},
         sync_direction = ${sync.syncDirection || null},
@@ -817,12 +854,15 @@ export async function storeAppointmentSync(sync: AppointmentSync): Promise<void>
     await sql`
       INSERT INTO appointment_syncs (
         maid_central_appointment_id, ghl_appointment_id, ghl_calendar_id,
+        team_id, employee_id,
         maid_central_last_modified, ghl_last_modified, sync_direction, conflict_resolution
       )
       VALUES (
         ${sync.maidCentralAppointmentId || null},
         ${sync.ghlAppointmentId || null},
         ${sync.ghlCalendarId || null},
+        ${sync.teamId || null},
+        ${sync.employeeId || null},
         ${sync.maidCentralLastModified || null},
         ${sync.ghlLastModified || null},
         ${sync.syncDirection || null},
@@ -863,6 +903,8 @@ export async function getAppointmentSync(mcId?: string, ghlId?: string): Promise
     maidCentralAppointmentId: row.maid_central_appointment_id as string | undefined,
     ghlAppointmentId: row.ghl_appointment_id as string | undefined,
     ghlCalendarId: row.ghl_calendar_id as string | undefined,
+    teamId: (row.team_id as string | undefined) || undefined,
+    employeeId: (row.employee_id as string | undefined) || undefined,
     maidCentralLastModified: row.maid_central_last_modified ? new Date(row.maid_central_last_modified as Date) : undefined,
     ghlLastModified: row.ghl_last_modified ? new Date(row.ghl_last_modified as Date) : undefined,
     syncDirection: row.sync_direction as 'mc_to_ghl' | 'ghl_to_mc' | 'bidirectional' | undefined,
@@ -905,6 +947,8 @@ export async function getAllAppointmentSyncs(): Promise<AppointmentSync[]> {
     maidCentralAppointmentId: row.maid_central_appointment_id as string | undefined,
     ghlAppointmentId: row.ghl_appointment_id as string | undefined,
     ghlCalendarId: row.ghl_calendar_id as string | undefined,
+    teamId: row.team_id ? String(row.team_id) : undefined,
+    employeeId: row.employee_id ? String(row.employee_id) : undefined,
     maidCentralLastModified: row.maid_central_last_modified ? new Date(row.maid_central_last_modified as Date) : undefined,
     ghlLastModified: row.ghl_last_modified ? new Date(row.ghl_last_modified as Date) : undefined,
     syncDirection: row.sync_direction as 'mc_to_ghl' | 'ghl_to_mc' | 'bidirectional' | undefined,
@@ -974,4 +1018,162 @@ export async function getSyncedQuotes(locationId: string, since?: Date): Promise
     quoteId: row.quote_id as string,
     syncedAt: new Date(row.synced_at as Date),
   }));
+}
+
+// Team Calendar Mappings
+export interface TeamCalendarMapping {
+  id?: number;
+  locationId: string;
+  maidCentralTeamId: string;
+  maidCentralTeamName?: string;
+  ghlCalendarId: string;
+  ghlCalendarName?: string;
+  enabled: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export async function storeTeamCalendarMapping(mapping: TeamCalendarMapping): Promise<void> {
+  await initDatabase();
+  const sql = getSql();
+
+  const existing = await sql`
+    SELECT id FROM team_calendar_mappings
+    WHERE location_id = ${mapping.locationId} AND maid_central_team_id = ${mapping.maidCentralTeamId}
+    LIMIT 1
+  `;
+
+  if (existing.length > 0) {
+    await sql`
+      UPDATE team_calendar_mappings
+      SET
+        maid_central_team_name = ${mapping.maidCentralTeamName || null},
+        ghl_calendar_id = ${mapping.ghlCalendarId},
+        ghl_calendar_name = ${mapping.ghlCalendarName || null},
+        enabled = ${mapping.enabled !== undefined ? mapping.enabled : true},
+        updated_at = NOW()
+      WHERE location_id = ${mapping.locationId} AND maid_central_team_id = ${mapping.maidCentralTeamId}
+    `;
+  } else {
+    await sql`
+      INSERT INTO team_calendar_mappings (
+        location_id, maid_central_team_id, maid_central_team_name,
+        ghl_calendar_id, ghl_calendar_name, enabled
+      )
+      VALUES (
+        ${mapping.locationId},
+        ${mapping.maidCentralTeamId},
+        ${mapping.maidCentralTeamName || null},
+        ${mapping.ghlCalendarId},
+        ${mapping.ghlCalendarName || null},
+        ${mapping.enabled !== undefined ? mapping.enabled : true}
+      )
+    `;
+  }
+}
+
+export async function getTeamCalendarMapping(
+  locationId: string,
+  maidCentralTeamId: string
+): Promise<TeamCalendarMapping | null> {
+  await initDatabase();
+  const sql = getSql();
+
+  const result = await sql`
+    SELECT * FROM team_calendar_mappings
+    WHERE location_id = ${locationId} AND maid_central_team_id = ${maidCentralTeamId}
+    LIMIT 1
+  `;
+
+  if (result.length === 0) {
+    return null;
+  }
+
+  const row = result[0];
+  return {
+    id: row.id as number,
+    locationId: row.location_id as string,
+    maidCentralTeamId: row.maid_central_team_id as string,
+    maidCentralTeamName: row.maid_central_team_name as string | undefined,
+    ghlCalendarId: row.ghl_calendar_id as string,
+    ghlCalendarName: row.ghl_calendar_name as string | undefined,
+    enabled: row.enabled as boolean,
+    createdAt: row.created_at ? new Date(row.created_at as Date) : undefined,
+    updatedAt: row.updated_at ? new Date(row.updated_at as Date) : undefined,
+  };
+}
+
+export async function getAllTeamCalendarMappings(locationId: string): Promise<TeamCalendarMapping[]> {
+  await initDatabase();
+  const sql = getSql();
+
+  const result = await sql`
+    SELECT * FROM team_calendar_mappings
+    WHERE location_id = ${locationId}
+    ORDER BY maid_central_team_name, created_at
+  `;
+
+  return result.map((row) => ({
+    id: row.id as number,
+    locationId: row.location_id as string,
+    maidCentralTeamId: row.maid_central_team_id as string,
+    maidCentralTeamName: row.maid_central_team_name as string | undefined,
+    ghlCalendarId: row.ghl_calendar_id as string,
+    ghlCalendarName: row.ghl_calendar_name as string | undefined,
+    enabled: row.enabled as boolean,
+    createdAt: row.created_at ? new Date(row.created_at as Date) : undefined,
+    updatedAt: row.updated_at ? new Date(row.updated_at as Date) : undefined,
+  }));
+}
+
+export async function getGHLCalendarForTeam(
+  locationId: string,
+  maidCentralTeamId: string
+): Promise<string | null> {
+  const mapping = await getTeamCalendarMapping(locationId, maidCentralTeamId);
+  return mapping?.enabled ? mapping.ghlCalendarId : null;
+}
+
+export async function getTeamForGHLCalendar(
+  locationId: string,
+  ghlCalendarId: string
+): Promise<TeamCalendarMapping | null> {
+  await initDatabase();
+  const sql = getSql();
+
+  const result = await sql`
+    SELECT * FROM team_calendar_mappings
+    WHERE location_id = ${locationId} AND ghl_calendar_id = ${ghlCalendarId} AND enabled = true
+    LIMIT 1
+  `;
+
+  if (result.length === 0) {
+    return null;
+  }
+
+  const row = result[0];
+  return {
+    id: row.id as number,
+    locationId: row.location_id as string,
+    maidCentralTeamId: row.maid_central_team_id as string,
+    maidCentralTeamName: row.maid_central_team_name as string | undefined,
+    ghlCalendarId: row.ghl_calendar_id as string,
+    ghlCalendarName: row.ghl_calendar_name as string | undefined,
+    enabled: row.enabled as boolean,
+    createdAt: row.created_at ? new Date(row.created_at as Date) : undefined,
+    updatedAt: row.updated_at ? new Date(row.updated_at as Date) : undefined,
+  };
+}
+
+export async function deleteTeamCalendarMapping(
+  locationId: string,
+  maidCentralTeamId: string
+): Promise<void> {
+  await initDatabase();
+  const sql = getSql();
+
+  await sql`
+    DELETE FROM team_calendar_mappings
+    WHERE location_id = ${locationId} AND maid_central_team_id = ${maidCentralTeamId}
+  `;
 }

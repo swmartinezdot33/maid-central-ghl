@@ -24,6 +24,8 @@ export async function POST(request: NextRequest) {
     // Handle different event types
     if (eventType.includes('created') || eventType.includes('booked')) {
       // New appointment created/booked
+      // Note: syncGHLToMaidCentral will check availability across all teams before creating
+      // and will reject if conflicts are found
       const result = await syncGHLToMaidCentral(appointment, locationId);
       
       if (result.success) {
@@ -33,9 +35,17 @@ export async function POST(request: NextRequest) {
           result,
         });
       } else {
+        // Check if error is due to availability conflict
+        const isAvailabilityError = result.error?.includes('conflicts') || result.error?.includes('unavailable');
         return NextResponse.json(
-          { error: result.error || 'Failed to sync appointment' },
-          { status: 500 }
+          { 
+            error: result.error || 'Failed to sync appointment',
+            conflict: isAvailabilityError,
+            message: isAvailabilityError 
+              ? 'Appointment could not be created due to scheduling conflict in MaidCentral'
+              : 'Failed to sync appointment'
+          },
+          { status: isAvailabilityError ? 409 : 500 } // 409 Conflict for availability issues
         );
       }
     } else if (eventType.includes('updated') || eventType.includes('modified')) {
