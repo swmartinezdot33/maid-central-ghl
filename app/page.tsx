@@ -14,6 +14,7 @@ import {
   CheckCircleIcon,
   XCircleIcon,
   DocumentTextIcon,
+  SparklesIcon,
 } from '@heroicons/react/24/outline';
 
 interface ConfigStatus {
@@ -371,6 +372,51 @@ export default function Home() {
                   </div>
                 </Card>
               )}
+
+              {/* Quote & Booking Features */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Create Quote & Booking */}
+                <Card hover padding="lg">
+                  <div className="flex items-start justify-between mb-4">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">Create Quote & Booking</h3>
+                      <p className="text-sm text-gray-500 mt-1">Create quotes and book services directly from the dashboard</p>
+                    </div>
+                    <DocumentTextIcon className="w-8 h-8 text-primary-600 flex-shrink-0" />
+                  </div>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Create quotes with automatic pricing calculation, select services, and book appointments. Data is automatically synced to GHL for marketing.
+                  </p>
+                  <Button
+                    variant="primary"
+                    onClick={() => window.location.href = '/quotes'}
+                    className="w-full"
+                  >
+                    Go to Quotes
+                  </Button>
+                </Card>
+
+                {/* Widget Customization */}
+                <Card hover padding="lg">
+                  <div className="flex items-start justify-between mb-4">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">Widget Configuration</h3>
+                      <p className="text-sm text-gray-500 mt-1">Customize and embed the booking widget on your website</p>
+                    </div>
+                    <SparklesIcon className="w-8 h-8 text-primary-600 flex-shrink-0" />
+                  </div>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Customize widget colors, fonts, layout, and field visibility. Get embed code to add the widget to your website.
+                  </p>
+                  <Button
+                    variant="primary"
+                    onClick={() => window.location.href = '/widget-config'}
+                    className="w-full"
+                  >
+                    Configure Widget
+                  </Button>
+                </Card>
+              </div>
             </>
           )}
         </div>

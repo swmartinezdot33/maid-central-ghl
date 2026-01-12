@@ -12,6 +12,7 @@ import {
   DocumentTextIcon,
   CalendarIcon,
   ServerIcon,
+  PaintBrushIcon,
 } from '@heroicons/react/24/outline';
 
 const navigation = [
@@ -21,6 +22,7 @@ const navigation = [
   { name: 'Customers', href: '/customers', icon: UserGroupIcon },
   { name: 'Quotes', href: '/quotes', icon: DocumentTextIcon },
   { name: 'Appointments', href: '/appointments', icon: CalendarIcon },
+  { name: 'Widget Config', href: '/widget-config', icon: PaintBrushIcon },
   { name: 'Webhooks', href: '/webhooks', icon: ServerIcon },
 ];
 
