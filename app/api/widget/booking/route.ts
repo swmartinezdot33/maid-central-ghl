@@ -7,7 +7,8 @@ import { getIntegrationConfig } from '@/lib/db';
 
 export async function POST(request: NextRequest) {
   try {
-    const locationId = getLocationIdFromRequest(request);
+    const body = await request.json();
+    const locationId = getLocationIdFromRequest(request) || body.locationId;
     
     if (!locationId) {
       return NextResponse.json(
@@ -24,7 +25,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = await request.json();
     const {
       quoteId,
       leadId,

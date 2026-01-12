@@ -182,6 +182,7 @@ export default function BookingWidget() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          locationId,
           firstName: leadData.firstName,
           lastName: leadData.lastName,
           email: leadData.email,
@@ -231,6 +232,7 @@ export default function BookingWidget() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          locationId,
           quoteId,
           leadId,
           selectedDate: bookingData.selectedDate,
