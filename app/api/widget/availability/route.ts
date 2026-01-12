@@ -33,7 +33,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       available: availability.available,
       conflicts: availability.conflicts,
-      availableTeams: availability.availableTeams,
     });
   } catch (error) {
     console.error('Error checking availability:', error);

@@ -145,10 +145,10 @@ export async function POST(request: NextRequest) {
         const endDateTime = new Date(startDateTime);
         endDateTime.setHours(endDateTime.getHours() + 2);
 
-        await ghlAPI.createCalendarEvent(
+        await ghlAPI.createCalendarAppointment(
+          config.ghlCalendarId,
           config.ghlLocationId,
           {
-            calendarId: config.ghlCalendarId,
             title: `Cleaning Service Booking - Quote #${quoteId}`,
             description: `Booked service for lead ${leadId}. Booking ID: ${bookingId}`,
             startTime: startDateTime.toISOString(),
