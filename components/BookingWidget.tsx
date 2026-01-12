@@ -55,6 +55,8 @@ export default function BookingWidget() {
   const [scopes, setScopes] = useState<any[]>([]);
   const [selectedScopes, setSelectedScopes] = useState<string[]>([]);
   const [quoteAmount, setQuoteAmount] = useState<number | null>(null);
+  const [questions, setQuestions] = useState<any[]>([]);
+  const [questionAnswers, setQuestionAnswers] = useState<Record<string, any>>({});
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -151,6 +153,8 @@ export default function BookingWidget() {
     setScopeGroupId(groupId);
     setSelectedScopes([]);
     setScopes([]);
+    setQuestions([]);
+    setQuestionAnswers({});
 
     if (!groupId || !locationId) return;
 
@@ -162,6 +166,45 @@ export default function BookingWidget() {
       }
     } catch (err) {
       console.error('Error loading scopes:', err);
+    }
+  };
+
+  const handleScopeChange = async (scopeId: string, isChecked: boolean) => {
+    let newScopes = [...selectedScopes];
+    if (isChecked) {
+      newScopes = [...newScopes, scopeId];
+    } else {
+      newScopes = newScopes.filter(s => s !== scopeId);
+    }
+    setSelectedScopes(newScopes);
+
+    // Load questions for the selected scopes
+    if (newScopes.length > 0 && locationId) {
+      await loadQuestionsForScopes(newScopes);
+    } else {
+      setQuestions([]);
+      setQuestionAnswers({});
+    }
+  };
+
+  const loadQuestionsForScopes = async (scopeIds: string[]) => {
+    try {
+      const response = await fetch('/api/maid-central/questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          locationId,
+          scopeIds: scopeIds,
+        }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setQuestions(data.questions || []);
+        // Reset answers when questions change
+        setQuestionAnswers({});
+      }
+    } catch (err) {
+      console.error('Error loading questions:', err);
     }
   };
 
@@ -191,6 +234,7 @@ export default function BookingWidget() {
           homePostalCode: leadData.postalCode,
           scopeGroupId: scopeGroupId,
           scopesOfWork: selectedScopes,
+          questions: questionAnswers,
         }),
       });
 
@@ -404,16 +448,91 @@ export default function BookingWidget() {
                       checked={selectedScopes.includes(scope.ScopeId || scope.id)}
                       onChange={(e) => {
                         const scopeId = scope.ScopeId || scope.id;
-                        if (e.target.checked) {
-                          setSelectedScopes((prev) => [...prev, scopeId]);
-                        } else {
-                          setSelectedScopes((prev) => prev.filter((s) => s !== scopeId));
-                        }
+                        handleScopeChange(scopeId, e.target.checked);
                       }}
                     />
                     <span>{scope.ScopeName || scope.name}</span>
                   </label>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {questions.length > 0 && (
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                Service Details
+              </label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {questions.map((question: any) => {
+                  const questionId = question.QuestionId || question.id;
+                  const questionText = question.QuestionText || question.text || question.name;
+                  const questionType = question.QuestionType || question.type || 'text';
+
+                  return (
+                    <div key={questionId}>
+                      <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '500', fontSize: '0.9rem' }}>
+                        {questionText}
+                        {question.IsRequired && <span style={{ color: 'red' }}>*</span>}
+                      </label>
+                      {questionType === 'text' || questionType === 'textarea' ? (
+                        <textarea
+                          value={questionAnswers[questionId] || ''}
+                          onChange={(e) => setQuestionAnswers((prev) => ({ ...prev, [questionId]: e.target.value }))}
+                          style={{
+                            width: '100%',
+                            padding: '0.5rem',
+                            borderRadius: '4px',
+                            border: '1px solid #d1d5db',
+                            fontFamily: 'inherit',
+                            minHeight: '60px',
+                          }}
+                          placeholder={question.Placeholder || ''}
+                        />
+                      ) : questionType === 'dropdown' || questionType === 'select' ? (
+                        <select
+                          value={questionAnswers[questionId] || ''}
+                          onChange={(e) => setQuestionAnswers((prev) => ({ ...prev, [questionId]: e.target.value }))}
+                          style={{
+                            width: '100%',
+                            padding: '0.5rem',
+                            borderRadius: '4px',
+                            border: '1px solid #d1d5db',
+                          }}
+                        >
+                          <option value="">Select an option</option>
+                          {question.Options && question.Options.map((opt: any) => (
+                            <option key={opt.Id || opt.value} value={opt.Id || opt.value}>
+                              {opt.Text || opt.label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : questionType === 'checkbox' ? (
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <input
+                            type="checkbox"
+                            checked={questionAnswers[questionId] || false}
+                            onChange={(e) => setQuestionAnswers((prev) => ({ ...prev, [questionId]: e.target.checked }))}
+                          />
+                          <span>{question.CheckboxLabel || 'Yes'}</span>
+                        </label>
+                      ) : (
+                        <input
+                          type="text"
+                          value={questionAnswers[questionId] || ''}
+                          onChange={(e) => setQuestionAnswers((prev) => ({ ...prev, [questionId]: e.target.value }))}
+                          style={{
+                            width: '100%',
+                            padding: '0.5rem',
+                            borderRadius: '4px',
+                            border: '1px solid #d1d5db',
+                          }}
+                          placeholder={question.Placeholder || ''}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

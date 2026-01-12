@@ -38,3 +38,39 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const locationId = getLocationIdFromRequest(request) || body.locationId;
+    const { scopeIds } = body;
+
+    if (!locationId) {
+      return NextResponse.json(
+        { error: 'Location ID is required' },
+        { status: 400 }
+      );
+    }
+
+    if (!scopeIds || !Array.isArray(scopeIds) || scopeIds.length === 0) {
+      return NextResponse.json(
+        { error: 'scopeIds is required and must be a non-empty array' },
+        { status: 400 }
+      );
+    }
+
+    const questions = await maidCentralAPI.getQuestions(scopeIds, locationId);
+    
+    return NextResponse.json({
+      questions,
+      scopeIds,
+      count: questions.length,
+    });
+  } catch (error) {
+    console.error('Error fetching questions:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to fetch questions' },
+      { status: 500 }
+    );
+  }
+}
