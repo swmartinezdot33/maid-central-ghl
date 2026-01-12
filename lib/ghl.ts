@@ -1076,7 +1076,201 @@ export class GHLAPI {
       }
     }
   }
+
+  /**
+   * Create an opportunity with quote details
+   */
+  async createOpportunityWithQuote(
+    locationId: string,
+    contactId: string,
+    quoteData: {
+      title?: string;
+      quoteNumber?: string;
+      amount?: number;
+      serviceDetails?: string;
+      selectedServices?: string[];
+      address?: string;
+      postalCode?: string;
+      estimatedDate?: string;
+      [key: string]: any;
+    }
+  ): Promise<any> {
+    try {
+      const token = await getGHLOAuthToken(locationId);
+      if (!token?.accessToken) {
+        throw new Error('GHL OAuth token not found or expired');
+      }
+
+      const opportunityPayload: any = {
+        title: quoteData.title || quoteData.quoteNumber || 'Quote from MaidCentral',
+        status: 'new',
+        source: 'MaidCentral',
+        monetaryValue: quoteData.amount || 0,
+      };
+
+      // Add custom fields for quote data
+      const customFields: any = {};
+
+      if (quoteData.quoteNumber) {
+        customFields['maidcentral_quote_number'] = quoteData.quoteNumber;
+      }
+      if (quoteData.amount) {
+        customFields['maidcentral_quote_amount'] = String(quoteData.amount);
+      }
+      if (quoteData.serviceDetails) {
+        customFields['maidcentral_service_details'] = quoteData.serviceDetails;
+      }
+      if (quoteData.selectedServices && Array.isArray(quoteData.selectedServices)) {
+        customFields['maidcentral_selected_services'] = quoteData.selectedServices.join(', ');
+      }
+      if (quoteData.address) {
+        customFields['maidcentral_quote_address'] = quoteData.address;
+      }
+      if (quoteData.postalCode) {
+        customFields['maidcentral_postal_code'] = quoteData.postalCode;
+      }
+      if (quoteData.estimatedDate) {
+        customFields['maidcentral_estimated_date'] = quoteData.estimatedDate;
+      }
+
+      // Merge any additional custom fields from quoteData
+      Object.keys(quoteData).forEach((key) => {
+        if (!['title', 'quoteNumber', 'amount', 'serviceDetails', 'selectedServices', 'address', 'postalCode', 'estimatedDate'].includes(key)) {
+          customFields[`maidcentral_${key}`] = quoteData[key];
+        }
+      });
+
+      if (Object.keys(customFields).length > 0) {
+        opportunityPayload.customFields = customFields;
+      }
+
+      const response = await this.client.post(
+        `/opportunities/v1?locationId=${locationId}`,
+        opportunityPayload,
+        {
+          headers: {
+            Authorization: `Bearer ${token.accessToken}`,
+            'Version': GHL_API_VERSION,
+          },
+        }
+      );
+
+      const opportunityId = response.data?.id || response.data?._id;
+      if (!opportunityId) {
+        throw new Error('Failed to get opportunity ID from response');
+      }
+
+      // Link the opportunity to the contact
+      try {
+        await this.client.put(
+          `/opportunities/v1/${opportunityId}?locationId=${locationId}`,
+          {
+            contactId: contactId,
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${token.accessToken}`,
+              'Version': GHL_API_VERSION,
+            },
+          }
+        );
+      } catch (linkError) {
+        console.warn('[GHL API] Failed to link opportunity to contact, but opportunity was created:', linkError);
+      }
+
+      return {
+        id: opportunityId,
+        ...response.data,
+      };
+    } catch (error) {
+      console.error('[GHL API] Error creating opportunity with quote:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update an opportunity with booking details
+   */
+  async updateOpportunityWithBooking(
+    locationId: string,
+    opportunityId: string,
+    bookingData: {
+      bookingId?: string;
+      bookingDate?: string;
+      bookingTime?: string;
+      status?: 'confirmed' | 'pending' | 'completed';
+      teamName?: string;
+      appointmentId?: string;
+      [key: string]: any;
+    }
+  ): Promise<any> {
+    try {
+      const token = await getGHLOAuthToken(locationId);
+      if (!token?.accessToken) {
+        throw new Error('GHL OAuth token not found or expired');
+      }
+
+      const updatePayload: any = {};
+
+      // Update status if provided
+      if (bookingData.status) {
+        const statusMap: any = {
+          confirmed: 'contacted',
+          pending: 'qualified',
+          completed: 'customer',
+        };
+        updatePayload.status = statusMap[bookingData.status] || bookingData.status;
+      }
+
+      // Add custom fields for booking data
+      const customFields: any = {};
+
+      if (bookingData.bookingId) {
+        customFields['maidcentral_booking_id'] = bookingData.bookingId;
+      }
+      if (bookingData.bookingDate) {
+        customFields['maidcentral_booking_date'] = bookingData.bookingDate;
+      }
+      if (bookingData.bookingTime) {
+        customFields['maidcentral_booking_time'] = bookingData.bookingTime;
+      }
+      if (bookingData.teamName) {
+        customFields['maidcentral_team_name'] = bookingData.teamName;
+      }
+      if (bookingData.appointmentId) {
+        customFields['maidcentral_appointment_id'] = bookingData.appointmentId;
+      }
+
+      // Merge any additional custom fields from bookingData
+      Object.keys(bookingData).forEach((key) => {
+        if (!['bookingId', 'bookingDate', 'bookingTime', 'status', 'teamName', 'appointmentId'].includes(key)) {
+          customFields[`maidcentral_${key}`] = bookingData[key];
+        }
+      });
+
+      if (Object.keys(customFields).length > 0) {
+        updatePayload.customFields = customFields;
+      }
+
+      const response = await this.client.put(
+        `/opportunities/v1/${opportunityId}?locationId=${locationId}`,
+        updatePayload,
+        {
+          headers: {
+            Authorization: `Bearer ${token.accessToken}`,
+            'Version': GHL_API_VERSION,
+          },
+        }
+      );
+
+      return response.data || { id: opportunityId };
+    } catch (error) {
+      console.error('[GHL API] Error updating opportunity with booking:', error);
+      throw error;
+    }
+  }
 }
 
 export const ghlAPI = new GHLAPI();
+
 

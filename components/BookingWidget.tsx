@@ -31,219 +31,277 @@ interface BookingData {
   [key: string]: any;
 }
 
-interface Service {
-  id: string;
-  name: string;
-  description?: string;
-  basePrice?: number;
-  [key: string]: any;
+interface WidgetConfig {
+  themeColors?: any;
+  typography?: any;
+  layout?: any;
+  customCss?: string;
+  fieldVisibility?: Record<string, boolean>;
 }
 
 export default function BookingWidget() {
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [leadData, setLeadData] = useState<Partial<LeadData>>({});
   const [quoteData, setQuoteData] = useState<Partial<QuoteData>>({});
   const [bookingData, setBookingData] = useState<Partial<BookingData>>({});
-  
+
   const [leadId, setLeadId] = useState<string | null>(null);
   const [quoteId, setQuoteId] = useState<string | null>(null);
   const [bookingId, setBookingId] = useState<string | null>(null);
-  
-  const [services, setServices] = useState<Service[]>([]);
+
+  const [services, setServices] = useState<any[]>([]);
+  const [scopeGroups, setScopeGroups] = useState<any[]>([]);
+  const [scopeGroupId, setScopeGroupId] = useState('');
+  const [scopes, setScopes] = useState<any[]>([]);
+  const [selectedScopes, setSelectedScopes] = useState<string[]>([]);
+  const [quoteAmount, setQuoteAmount] = useState<number | null>(null);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [locationId, setLocationId] = useState<string | null>(null);
+  const [config, setConfig] = useState<WidgetConfig>({});
 
-  // Load services on mount
+  // Load widget configuration and location ID
   useEffect(() => {
-    loadServices();
-    loadUTMParams();
+    const params = new URLSearchParams(window.location.search);
+    const locId = params.get('locationId');
+    setLocationId(locId);
+
+    // Load widget configuration
+    if (locId) {
+      loadWidgetConfig(locId);
+      loadScopeGroups(locId);
+      loadUTMParams(params);
+    }
   }, []);
 
-  const loadUTMParams = () => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      setLeadData(prev => ({
-        ...prev,
-        utmSource: params.get('utm_source') || undefined,
-        utmMedium: params.get('utm_medium') || undefined,
-        utmCampaign: params.get('utm_campaign') || undefined,
-      }));
-    }
-  };
-
-  const loadServices = async () => {
+  const loadWidgetConfig = async (locId: string) => {
     try {
-      const response = await fetch('/api/maid-central/services');
+      const response = await fetch(`/api/widget-config?locationId=${locId}`);
       if (response.ok) {
         const data = await response.json();
-        setServices(Array.isArray(data) ? data : (data.data || data.services || []));
+        setConfig(data);
+        applyCustomStyles(data);
       }
-    } catch (error) {
-      console.error('Error loading services:', error);
+    } catch (err) {
+      console.error('Error loading widget config:', err);
     }
   };
 
-  // Step 1: Create Lead
+  const applyCustomStyles = (widgetConfig: WidgetConfig) => {
+    if (!widgetConfig.themeColors) return;
+
+    const style = document.createElement('style');
+    let css = '';
+
+    // Apply theme colors
+    if (widgetConfig.themeColors) {
+      css += `:root {
+        --primary-color: ${widgetConfig.themeColors.primary || '#2563eb'};
+        --secondary-color: ${widgetConfig.themeColors.secondary || '#059669'};
+        --background-color: ${widgetConfig.themeColors.background || '#ffffff'};
+        --text-color: ${widgetConfig.themeColors.text || '#1f2937'};
+      }`;
+    }
+
+    // Apply typography
+    if (widgetConfig.typography) {
+      css += `body {
+        font-family: ${widgetConfig.typography.fontFamily || 'system-ui, sans-serif'};
+        font-size: ${widgetConfig.typography.bodySize || '1rem'};
+        font-weight: ${widgetConfig.typography.bodyWeight || '400'};
+      }
+      h1 { font-size: ${widgetConfig.typography.heading1Size || '2rem'}; font-weight: ${widgetConfig.typography.headingWeight || '700'}; }
+      h2 { font-size: ${widgetConfig.typography.heading2Size || '1.5rem'}; font-weight: ${widgetConfig.typography.headingWeight || '700'}; }`;
+    }
+
+    // Add custom CSS
+    if (widgetConfig.customCss) {
+      css += widgetConfig.customCss;
+    }
+
+    if (css) {
+      style.textContent = css;
+      document.head.appendChild(style);
+    }
+  };
+
+  const loadUTMParams = (params: URLSearchParams) => {
+    setLeadData((prev) => ({
+      ...prev,
+      utmSource: params.get('utm_source') || undefined,
+      utmMedium: params.get('utm_medium') || undefined,
+      utmCampaign: params.get('utm_campaign') || undefined,
+    }));
+  };
+
+  const loadScopeGroups = async (locId: string) => {
+    try {
+      const response = await fetch(`/api/maid-central/scope-groups?locationId=${locId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setScopeGroups(data.scopeGroups || []);
+      }
+    } catch (err) {
+      console.error('Error loading scope groups:', err);
+    }
+  };
+
+  const handleScopeGroupChange = async (groupId: string) => {
+    setScopeGroupId(groupId);
+    setSelectedScopes([]);
+    setScopes([]);
+
+    if (!groupId || !locationId) return;
+
+    try {
+      const response = await fetch(`/api/maid-central/scopes?scopeGroupId=${groupId}&locationId=${locationId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setScopes(data.scopes || []);
+      }
+    } catch (err) {
+      console.error('Error loading scopes:', err);
+    }
+  };
+
+  // Step 1: Create Lead in MaidCentral and Contact in GHL
   const handleStep1Submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
+    if (!locationId) {
+      setError('Location ID not found');
+      setLoading(false);
+      return;
+    }
+
     try {
-      const response = await fetch('/api/maid-central/leads', {
+      const response = await fetch('/api/widget/quote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(leadData),
+        body: JSON.stringify({
+          firstName: leadData.firstName,
+          lastName: leadData.lastName,
+          email: leadData.email,
+          phone: leadData.phone,
+          postalCode: leadData.postalCode,
+          homePostalCode: leadData.postalCode,
+          scopeGroupId: scopeGroupId,
+          scopesOfWork: selectedScopes,
+        }),
       });
 
       const data = await response.json();
 
       if (response.ok && data.leadId) {
         setLeadId(String(data.leadId));
-        setQuoteData(prev => ({ ...prev, leadId: String(data.leadId) }));
+        setQuoteId(data.quoteId);
+        setQuoteData((prev) => ({
+          ...prev,
+          leadId: String(data.leadId),
+          selectedServices: selectedScopes,
+        }));
         setStep(2);
       } else {
-        setError(data.error || 'Failed to create lead');
+        setError(data.error || 'Failed to create quote');
       }
-    } catch (error) {
-      console.error('Error creating lead:', error);
-      setError('Failed to create lead. Please try again.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create quote');
     } finally {
       setLoading(false);
     }
   };
 
-  // Step 2: Create Quote
+  // Step 2: Booking
   const handleStep2Submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    try {
-      const response = await fetch('/api/maid-central/quotes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          leadId: leadId,
-          ...quoteData,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok && data.id) {
-        setQuoteId(data.id);
-        setBookingData(prev => ({ ...prev, quoteId: data.id }));
-        setStep(3);
-      } else {
-        setError(data.error || 'Failed to create quote');
-      }
-    } catch (error) {
-      console.error('Error creating quote:', error);
-      setError('Failed to create quote. Please try again.');
-    } finally {
+    if (!quoteId || !leadId || !locationId || !bookingData.selectedDate) {
+      setError('Missing required booking information');
       setLoading(false);
+      return;
     }
-  };
-
-  // Step 3: Create Booking
-  const handleStep3Submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
 
     try {
-      const response = await fetch('/api/maid-central/bookings', {
+      const response = await fetch('/api/widget/booking', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          quoteId: quoteId,
-          ...bookingData,
+          quoteId,
+          leadId,
+          selectedDate: bookingData.selectedDate,
+          selectedTime: bookingData.selectedTime || '09:00',
         }),
       });
 
       const data = await response.json();
 
-      if (response.ok && data.id) {
-        setBookingId(data.id);
-        // Trigger sync to GHL
-        if (quoteId) {
-          try {
-            await fetch('/api/webhook/quote', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ quoteId }),
-            });
-          } catch (syncError) {
-            console.error('Error syncing to GHL:', syncError);
-            // Don't fail the booking if sync fails
-          }
-        }
-        // Show success message
-        alert('Booking confirmed! Thank you for your booking.');
+      if (response.ok && data.bookingId) {
+        setBookingId(data.bookingId);
+        setStep(3);
       } else {
         setError(data.error || 'Failed to create booking');
       }
-    } catch (error) {
-      console.error('Error creating booking:', error);
-      setError('Failed to create booking. Please try again.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create booking');
     } finally {
       setLoading(false);
     }
   };
+
+  const primaryColor = config.themeColors?.primary || '#2563eb';
+  const secondaryColor = config.themeColors?.secondary || '#059669';
 
   return (
     <div style={{ maxWidth: '600px', margin: '0 auto', fontFamily: 'system-ui, sans-serif' }}>
       <div style={{ marginBottom: '2rem', textAlign: 'center' }}>
-        <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Book Your Service</h1>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '1rem' }}>
-          <div style={{ 
-            padding: '0.5rem 1rem', 
-            backgroundColor: step >= 1 ? '#2563eb' : '#e5e7eb', 
-            color: step >= 1 ? 'white' : '#6b7280',
-            borderRadius: '4px',
-            fontWeight: step === 1 ? 'bold' : 'normal'
-          }}>
-            1. Contact Info
+        {config.layout?.showBranding !== false && (
+          <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem', color: primaryColor }}>Book Your Service</h1>
+        )}
+
+        {config.layout?.showProgress !== false && (
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '1rem' }}>
+            {[1, 2, 3].map((s) => (
+              <div
+                key={s}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: s <= step ? primaryColor : '#e5e7eb',
+                  color: s <= step ? 'white' : '#6b7280',
+                  borderRadius: '4px',
+                  fontWeight: s === step ? 'bold' : 'normal',
+                }}
+              >
+                {s === 1 ? 'Contact' : s === 2 ? 'Booking' : 'Confirm'}
+              </div>
+            ))}
           </div>
-          <div style={{ 
-            padding: '0.5rem 1rem', 
-            backgroundColor: step >= 2 ? '#2563eb' : '#e5e7eb', 
-            color: step >= 2 ? 'white' : '#6b7280',
-            borderRadius: '4px',
-            fontWeight: step === 2 ? 'bold' : 'normal'
-          }}>
-            2. Get Quote
-          </div>
-          <div style={{ 
-            padding: '0.5rem 1rem', 
-            backgroundColor: step >= 3 ? '#2563eb' : '#e5e7eb', 
-            color: step >= 3 ? 'white' : '#6b7280',
-            borderRadius: '4px',
-            fontWeight: step === 3 ? 'bold' : 'normal'
-          }}>
-            3. Book
-          </div>
-        </div>
+        )}
       </div>
 
       {error && (
-        <div style={{ 
-          padding: '1rem', 
-          backgroundColor: '#fee2e2', 
-          color: '#991b1b', 
-          borderRadius: '4px', 
-          marginBottom: '1rem' 
-        }}>
+        <div
+          style={{
+            padding: '1rem',
+            backgroundColor: '#fee2e2',
+            color: '#991b1b',
+            borderRadius: '4px',
+            marginBottom: '1rem',
+          }}
+        >
           {error}
         </div>
       )}
 
-      {/* Step 1: Lead Creation */}
+      {/* Step 1: Contact Information & Service Selection */}
       {step === 1 && (
         <form onSubmit={handleStep1Submit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <h2 style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>Contact Information</h2>
-          
+          <h2 style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>Your Information</h2>
+
           <div>
             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
               First Name *
@@ -252,20 +310,19 @@ export default function BookingWidget() {
               type="text"
               required
               value={leadData.firstName || ''}
-              onChange={(e) => setLeadData(prev => ({ ...prev, firstName: e.target.value }))}
+              onChange={(e) => setLeadData((prev) => ({ ...prev, firstName: e.target.value }))}
               style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid #d1d5db' }}
             />
           </div>
 
           <div>
             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-              Last Name *
+              Last Name
             </label>
             <input
               type="text"
-              required
               value={leadData.lastName || ''}
-              onChange={(e) => setLeadData(prev => ({ ...prev, lastName: e.target.value }))}
+              onChange={(e) => setLeadData((prev) => ({ ...prev, lastName: e.target.value }))}
               style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid #d1d5db' }}
             />
           </div>
@@ -278,7 +335,7 @@ export default function BookingWidget() {
               type="email"
               required
               value={leadData.email || ''}
-              onChange={(e) => setLeadData(prev => ({ ...prev, email: e.target.value }))}
+              onChange={(e) => setLeadData((prev) => ({ ...prev, email: e.target.value }))}
               style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid #d1d5db' }}
             />
           </div>
@@ -291,7 +348,7 @@ export default function BookingWidget() {
               type="tel"
               required
               value={leadData.phone || ''}
-              onChange={(e) => setLeadData(prev => ({ ...prev, phone: e.target.value }))}
+              onChange={(e) => setLeadData((prev) => ({ ...prev, phone: e.target.value }))}
               style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid #d1d5db' }}
             />
           </div>
@@ -304,7 +361,7 @@ export default function BookingWidget() {
               type="text"
               required
               value={leadData.postalCode || ''}
-              onChange={(e) => setLeadData(prev => ({ ...prev, postalCode: e.target.value }))}
+              onChange={(e) => setLeadData((prev) => ({ ...prev, postalCode: e.target.value }))}
               style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid #d1d5db' }}
               placeholder="Enter your postal code"
             />
@@ -312,114 +369,77 @@ export default function BookingWidget() {
 
           <div>
             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-              Select Services *
+              Select Service Type *
             </label>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {services.map((service) => (
-                <label key={service.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <input
-                    type="checkbox"
-                    checked={(leadData.services || []).includes(service.id)}
-                    onChange={(e) => {
-                      const current = leadData.services || [];
-                      if (e.target.checked) {
-                        setLeadData(prev => ({ ...prev, services: [...current, service.id] }));
-                      } else {
-                        setLeadData(prev => ({ ...prev, services: current.filter(s => s !== service.id) }));
-                      }
-                    }}
-                  />
-                  <span>{service.name}</span>
-                </label>
+            <select
+              required
+              value={scopeGroupId}
+              onChange={(e) => handleScopeGroupChange(e.target.value)}
+              style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid #d1d5db' }}
+            >
+              <option value="">Choose a service type</option>
+              {scopeGroups.map((group: any) => (
+                <option key={group.ScopeGroupId || group.id} value={group.ScopeGroupId || group.id}>
+                  {group.ScopeGroupName || group.name}
+                </option>
               ))}
-            </div>
+            </select>
           </div>
+
+          {scopes.length > 0 && (
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                Select Services *
+              </label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {scopes.map((scope: any) => (
+                  <label
+                    key={scope.ScopeId || scope.id}
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedScopes.includes(scope.ScopeId || scope.id)}
+                      onChange={(e) => {
+                        const scopeId = scope.ScopeId || scope.id;
+                        if (e.target.checked) {
+                          setSelectedScopes((prev) => [...prev, scopeId]);
+                        } else {
+                          setSelectedScopes((prev) => prev.filter((s) => s !== scopeId));
+                        }
+                      }}
+                    />
+                    <span>{scope.ScopeName || scope.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
 
           <button
             type="submit"
-            disabled={loading || !leadData.firstName || !leadData.email || !leadData.phone || !leadData.postalCode}
+            disabled={loading || !leadData.firstName || !leadData.email || !leadData.phone || !leadData.postalCode || selectedScopes.length === 0}
             style={{
               padding: '0.75rem 1.5rem',
-              backgroundColor: loading ? '#9ca3af' : '#2563eb',
+              backgroundColor: loading ? '#9ca3af' : primaryColor,
               color: 'white',
               border: 'none',
               borderRadius: '4px',
               cursor: loading ? 'not-allowed' : 'pointer',
               fontWeight: '500',
-              fontSize: '1rem'
+              fontSize: '1rem',
             }}
           >
-            {loading ? 'Creating Lead...' : 'Continue to Get Quote'}
+            {loading ? 'Creating Quote...' : 'Get Quote & Schedule Booking'}
           </button>
         </form>
       )}
 
-      {/* Step 2: Quote Creation */}
+      {/* Step 2: Booking Details */}
       {step === 2 && (
         <form onSubmit={handleStep2Submit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <h2 style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>Get Your Quote</h2>
-          
-          <div>
-            <p style={{ marginBottom: '1rem' }}>Please answer the following questions to get an accurate quote:</p>
-            <p style={{ color: '#6b7280', fontSize: '0.9rem', marginBottom: '1rem' }}>
-              (This step will be expanded with actual pricing questions from Maid Central API)
-            </p>
-          </div>
+          <h2 style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>Schedule Your Service</h2>
 
-          <div style={{ 
-            padding: '1rem', 
-            backgroundColor: '#f3f4f6', 
-            borderRadius: '4px',
-            marginBottom: '1rem'
-          }}>
-            <p><strong>Selected Services:</strong></p>
-            <ul>
-              {leadData.services?.map(serviceId => {
-                const service = services.find(s => s.id === serviceId);
-                return <li key={serviceId}>{service?.name || serviceId}</li>;
-              })}
-            </ul>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setStep(1)}
-            style={{
-              padding: '0.5rem 1rem',
-              backgroundColor: '#e5e7eb',
-              color: '#374151',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
-          >
-            ← Back
-          </button>
-
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              padding: '0.75rem 1.5rem',
-              backgroundColor: loading ? '#9ca3af' : '#2563eb',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              fontWeight: '500',
-              fontSize: '1rem'
-            }}
-          >
-            {loading ? 'Creating Quote...' : 'Continue to Booking'}
-          </button>
-        </form>
-      )}
-
-      {/* Step 3: Booking Creation */}
-      {step === 3 && (
-        <form onSubmit={handleStep3Submit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <h2 style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>Complete Your Booking</h2>
-          
           <div>
             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
               Preferred Date *
@@ -429,7 +449,7 @@ export default function BookingWidget() {
               required
               min={new Date().toISOString().split('T')[0]}
               value={bookingData.selectedDate || ''}
-              onChange={(e) => setBookingData(prev => ({ ...prev, selectedDate: e.target.value }))}
+              onChange={(e) => setBookingData((prev) => ({ ...prev, selectedDate: e.target.value }))}
               style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid #d1d5db' }}
             />
           </div>
@@ -440,67 +460,62 @@ export default function BookingWidget() {
             </label>
             <input
               type="time"
-              value={bookingData.selectedTime || ''}
-              onChange={(e) => setBookingData(prev => ({ ...prev, selectedTime: e.target.value }))}
+              value={bookingData.selectedTime || '09:00'}
+              onChange={(e) => setBookingData((prev) => ({ ...prev, selectedTime: e.target.value }))}
               style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid #d1d5db' }}
             />
           </div>
 
-          <div style={{ 
-            padding: '1rem', 
-            backgroundColor: '#f3f4f6', 
-            borderRadius: '4px',
-            marginBottom: '1rem'
-          }}>
-            <p><strong>Quote ID:</strong> {quoteId}</p>
-            <p style={{ color: '#6b7280', fontSize: '0.9rem', marginTop: '0.5rem' }}>
-              Payment information will be collected in the next step
-            </p>
+          <div style={{ display: 'flex', gap: '1rem' }}>
+            <button
+              type="button"
+              onClick={() => setStep(1)}
+              style={{
+                flex: 1,
+                padding: '0.5rem 1rem',
+                backgroundColor: '#e5e7eb',
+                color: '#374151',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+            >
+              ← Back
+            </button>
+
+            <button
+              type="submit"
+              disabled={loading || !bookingData.selectedDate}
+              style={{
+                flex: 1,
+                padding: '0.75rem 1.5rem',
+                backgroundColor: loading ? '#9ca3af' : secondaryColor,
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                fontWeight: '500',
+                fontSize: '1rem',
+              }}
+            >
+              {loading ? 'Confirming...' : 'Confirm Booking'}
+            </button>
           </div>
-
-          <button
-            type="button"
-            onClick={() => setStep(2)}
-            style={{
-              padding: '0.5rem 1rem',
-              backgroundColor: '#e5e7eb',
-              color: '#374151',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
-          >
-            ← Back
-          </button>
-
-          <button
-            type="submit"
-            disabled={loading || !bookingData.selectedDate}
-            style={{
-              padding: '0.75rem 1.5rem',
-              backgroundColor: loading ? '#9ca3af' : '#10b981',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              fontWeight: '500',
-              fontSize: '1rem'
-            }}
-          >
-            {loading ? 'Confirming Booking...' : 'Confirm Booking'}
-          </button>
         </form>
       )}
 
-      {bookingId && (
-        <div style={{
-          padding: '2rem',
-          backgroundColor: '#d1fae5',
-          color: '#065f46',
-          borderRadius: '4px',
-          marginTop: '2rem',
-          textAlign: 'center'
-        }}>
+      {/* Step 3: Success */}
+      {step === 3 && bookingId && (
+        <div
+          style={{
+            padding: '2rem',
+            backgroundColor: '#d1fae5',
+            color: '#065f46',
+            borderRadius: '4px',
+            marginTop: '2rem',
+            textAlign: 'center',
+          }}
+        >
           <h3 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>Booking Confirmed!</h3>
           <p>Your booking ID: {bookingId}</p>
           <p style={{ marginTop: '0.5rem' }}>Thank you for your booking. You will receive a confirmation email shortly.</p>
@@ -509,4 +524,3 @@ export default function BookingWidget() {
     </div>
   );
 }
-

@@ -156,7 +156,7 @@ function SettingsPageContent() {
       const data = await response.json();
       
       if (response.ok && data.calendars && Array.isArray(data.calendars)) {
-        setCalendars(data.calendars);
+          setCalendars(data.calendars);
       }
     } catch (error) {
       console.error('Error loading calendars:', error);
@@ -334,7 +334,7 @@ function SettingsPageContent() {
       setMessage({ type: 'error', text: 'Location ID is required' });
       return;
     }
-
+    
     setSavingMappings(true);
     setMessage(null);
 
@@ -418,14 +418,14 @@ function SettingsPageContent() {
             <h1 className="text-3xl font-bold text-gray-900">Integration Settings</h1>
             <p className="text-gray-600 mt-1">Configure how data flows from MaidCentral to CRM</p>
           </div>
-        </div>
+      </div>
 
-        {message && (
+      {message && (
           <Alert
             variant={message.type === 'error' ? 'error' : 'success'}
             onClose={() => setMessage(null)}
           >
-            {message.text}
+          {message.text}
           </Alert>
         )}
 
@@ -441,13 +441,13 @@ function SettingsPageContent() {
                 status={ghlConnected ? 'connected' : 'disconnected'}
                 label={ghlConnected ? 'Connected' : 'Not Connected'}
               />
-              {!ghlConnected && (
+          {!ghlConnected && (
                 <Link href="/setup">
                   <Button variant="primary" size="sm">Setup OAuth</Button>
                 </Link>
               )}
             </div>
-          </div>
+        </div>
         </Card>
 
         <Tabs defaultValue="integration">
@@ -468,9 +468,9 @@ function SettingsPageContent() {
                     <Toggle
                       label="Enable Integration"
                       description="Master switch to enable/disable the entire integration"
-                      checked={config?.enabled || false}
-                      onChange={(e) => setConfig({ ...config!, enabled: e.target.checked })}
-                    />
+                checked={config?.enabled || false}
+                onChange={(e) => setConfig({ ...config!, enabled: e.target.checked })}
+              />
                   </div>
                 </div>
 
@@ -483,8 +483,8 @@ function SettingsPageContent() {
                       onChange={(e) => setConfig({ ...config!, syncCustomers: e.target.checked })}
                       disabled={!config?.enabled}
                     />
-                  </div>
-                </div>
+          </div>
+        </div>
 
                 <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                   <div className="flex-1">
@@ -504,24 +504,24 @@ function SettingsPageContent() {
           <TabsContent value="quote-sync">
             <Card padding="lg">
               <div className="space-y-6">
-                <div>
+            <div>
                   <h2 className="text-xl font-semibold text-gray-900 mb-2">Quote Syncing Configuration</h2>
                   <p className="text-sm text-gray-600 mb-4">
                     Configure how quotes from MaidCentral are synced to CRM contacts and opportunities.
-                  </p>
-                </div>
+              </p>
+            </div>
 
                 <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                   <div className="flex-1">
                     <Toggle
                       label="Enable Quote Syncing"
                       description="When enabled, new quotes from MaidCentral will automatically create contacts and opportunities in CRM"
-                      checked={config?.syncQuotes !== false}
-                      onChange={(e) => setConfig({ ...config!, syncQuotes: e.target.checked })}
-                      disabled={!config?.enabled}
-                    />
-                  </div>
-                </div>
+                checked={config?.syncQuotes !== false}
+                onChange={(e) => setConfig({ ...config!, syncQuotes: e.target.checked })}
+                disabled={!config?.enabled}
+              />
+          </div>
+        </div>
 
                 {config?.syncQuotes !== false && (
                   <>
@@ -535,11 +535,11 @@ function SettingsPageContent() {
                             onChange={(e) => setConfig({ ...config!, quotePollingEnabled: e.target.checked })}
                             disabled={!config?.enabled || !config?.syncQuotes}
                           />
-                        </div>
-                      </div>
+          </div>
+        </div>
 
                       {config?.quotePollingEnabled && (
-                        <div>
+            <div>
                           <Input
                             label="Polling Interval (minutes)"
                             type="number"
@@ -551,43 +551,83 @@ function SettingsPageContent() {
                             disabled={!config?.enabled || !config?.syncQuotes || !config?.quotePollingEnabled}
                             helperText="How often to automatically check for new quotes (5-1440 minutes). Default: 15 minutes."
                           />
-                          {config?.lastQuotePollAt && (
-                            <div className="mt-3 p-3 bg-white rounded border border-primary-200">
-                              <p className="text-sm font-medium text-gray-700 mb-1">Last Poll Status</p>
-                              <p className="text-sm text-gray-600">
-                                Last poll: {(() => {
+                          <div className="mt-3 p-3 bg-white rounded border border-primary-200">
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="text-sm font-medium text-gray-700">Last Poll Status</p>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={async () => {
+                                  if (!ghlData?.locationId) return;
                                   try {
-                                    const lastPollDate = typeof config.lastQuotePollAt === 'number' 
-                                      ? new Date(config.lastQuotePollAt) 
-                                      : new Date(config.lastQuotePollAt);
-                                    return isNaN(lastPollDate.getTime()) ? 'Never' : lastPollDate.toLocaleString();
-                                  } catch {
-                                    return 'Never';
-                                  }
-                                })()}
-                              </p>
-                              <p className="text-xs text-gray-500 mt-1">
-                                {(() => {
-                                  try {
-                                    const lastPollTime = typeof config.lastQuotePollAt === 'number' 
-                                      ? config.lastQuotePollAt 
-                                      : new Date(config.lastQuotePollAt).getTime();
-                                    const intervalMs = (config.quotePollingInterval || 15) * 60 * 1000;
-                                    const timeSinceLastPoll = Date.now() - lastPollTime;
-                                    const timeUntilNextPoll = intervalMs - timeSinceLastPoll;
-                                    const minutesUntilNext = Math.round(timeUntilNextPoll / 1000 / 60);
-                                    
-                                    if (isNaN(lastPollTime) || minutesUntilNext < 0) {
-                                      return 'Next poll will run at the scheduled interval';
+                                    setSaving(true);
+                                    const response = await fetch('/api/sync/quotes/poll', {
+                                      method: 'POST',
+                                      headers: {
+                                        'x-ghl-location-id': ghlData.locationId,
+                                      },
+                                    });
+                                    const data = await response.json();
+                                    if (response.ok) {
+                                      setMessage({ type: 'success', text: 'Poll triggered successfully' });
+                                      // Reload config to get updated timestamp
+                                      await loadConfig();
+                                    } else {
+                                      setMessage({ type: 'error', text: data.error || 'Failed to trigger poll' });
                                     }
-                                    return `Next poll in approximately ${minutesUntilNext} minute${minutesUntilNext !== 1 ? 's' : ''}`;
-                                  } catch {
+                                  } catch (error) {
+                                    setMessage({ type: 'error', text: 'Failed to trigger poll' });
+                                  } finally {
+                                    setSaving(false);
+                                  }
+                                }}
+                                disabled={saving || !config?.enabled || !config?.syncQuotes}
+                              >
+                                {saving ? 'Running...' : 'Run Poll Now'}
+                              </Button>
+                            </div>
+                            <p className="text-sm text-gray-600">
+                              Last poll: {(() => {
+                                if (!config?.lastQuotePollAt) {
+                                  return 'Never';
+                                }
+                                try {
+                                  const lastPollDate = typeof config.lastQuotePollAt === 'number' 
+                                    ? new Date(config.lastQuotePollAt) 
+                                    : new Date(config.lastQuotePollAt);
+                                  return isNaN(lastPollDate.getTime()) ? 'Never' : lastPollDate.toLocaleString();
+                                } catch {
+                                  return 'Never';
+                                }
+                              })()}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {(() => {
+                                if (!config?.lastQuotePollAt) {
+                                  return 'Next poll will run at the scheduled interval';
+                                }
+                                try {
+                                  const lastPollTime = typeof config.lastQuotePollAt === 'number' 
+                                    ? config.lastQuotePollAt 
+                                    : new Date(config.lastQuotePollAt).getTime();
+                                  if (isNaN(lastPollTime)) {
                                     return 'Next poll will run at the scheduled interval';
                                   }
-                                })()}
-                              </p>
-                            </div>
-                          )}
+                                  const intervalMs = (config.quotePollingInterval || 15) * 60 * 1000;
+                                  const timeSinceLastPoll = Date.now() - lastPollTime;
+                                  const timeUntilNextPoll = intervalMs - timeSinceLastPoll;
+                                  const minutesUntilNext = Math.round(timeUntilNextPoll / 1000 / 60);
+                                  
+                                  if (minutesUntilNext < 0) {
+                                    return 'Next poll is due now or overdue';
+                                  }
+                                  return `Next poll in approximately ${minutesUntilNext} minute${minutesUntilNext !== 1 ? 's' : ''}`;
+                                } catch {
+                                  return 'Next poll will run at the scheduled interval';
+                                }
+                              })()}
+              </p>
+            </div>
                         </div>
                       )}
                     </div>
@@ -597,12 +637,12 @@ function SettingsPageContent() {
                         <Toggle
                           label="Create Opportunities/Deals"
                           description="When enabled, an opportunity/deal will be created in CRM for each quote synced. The opportunity will include the quote amount and details."
-                          checked={config?.createOpportunities !== false}
-                          onChange={(e) => setConfig({ ...config!, createOpportunities: e.target.checked })}
-                          disabled={!config?.enabled || !config?.syncQuotes}
-                        />
-                      </div>
-                    </div>
+                checked={config?.createOpportunities !== false}
+                onChange={(e) => setConfig({ ...config!, createOpportunities: e.target.checked })}
+                disabled={!config?.enabled || !config?.syncQuotes}
+              />
+          </div>
+        </div>
 
                     <div className="p-4 bg-gray-50 rounded-lg">
                       <h3 className="text-sm font-semibold text-gray-900 mb-3">Sync Methods</h3>
@@ -629,15 +669,15 @@ function SettingsPageContent() {
                         </div>
                         <div className="flex items-start gap-2">
                           <CheckCircleIcon className="w-5 h-5 text-primary-600 mt-0.5 flex-shrink-0" />
-                          <div>
+            <div>
                             <p className="font-medium text-gray-900">Manual Sync</p>
                             <p className="text-xs text-gray-500">
                               Use the Quotes page to view and sync individual quotes manually
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
 
                     <Alert variant="info">
                       <p className="font-medium mb-2">How Quote Syncing Works:</p>
@@ -657,7 +697,7 @@ function SettingsPageContent() {
                     Quote syncing is currently disabled. Enable it above to start syncing quotes from MaidCentral to CRM.
                   </Alert>
                 )}
-              </div>
+            </div>
             </Card>
           </TabsContent>
 
@@ -669,12 +709,12 @@ function SettingsPageContent() {
                     <Toggle
                       label="Sync Appointments"
                       description="When enabled, appointments will sync bidirectionally between MaidCentral and CRM calendars"
-                      checked={config?.syncAppointments || false}
-                      onChange={(e) => setConfig({ ...config!, syncAppointments: e.target.checked })}
+                checked={config?.syncAppointments || false}
+                onChange={(e) => setConfig({ ...config!, syncAppointments: e.target.checked })}
                       disabled={!config?.enabled}
-                    />
-                  </div>
-                </div>
+              />
+          </div>
+        </div>
 
                 {config?.syncAppointments && (
                   <>
@@ -682,20 +722,20 @@ function SettingsPageContent() {
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                         CRM Calendar
                       </label>
-                      {loadingCalendars ? (
+          {loadingCalendars ? (
                         <div className="flex items-center gap-2 p-4 bg-gray-50 rounded-lg">
                           <LoadingSpinner size="sm" />
                           <span className="text-sm text-gray-500">Loading calendars...</span>
                         </div>
-                      ) : calendars.length === 0 ? (
+          ) : calendars.length === 0 ? (
                         <Alert variant="warning">
                           <p className="mb-2"><strong>No calendars found.</strong></p>
                           <p className="text-sm mb-2">This could mean:</p>
                           <ul className="text-sm list-disc list-inside space-y-1">
                             <li>No calendars exist in your CRM location</li>
-                            <li>The calendar API endpoint may need adjustment</li>
-                            <li>Check the browser console and server logs for API errors</li>
-                          </ul>
+                <li>The calendar API endpoint may need adjustment</li>
+                <li>Check the browser console and server logs for API errors</li>
+              </ul>
                           <p className="text-sm mt-2">
                             <strong>Note:</strong> You can still enter a calendar ID manually below.
                           </p>
@@ -706,20 +746,20 @@ function SettingsPageContent() {
                             { value: '', label: 'Select a calendar...' },
                             ...calendars.map(c => ({ value: c.id, label: c.name }))
                           ]}
-                          value={config?.ghlCalendarId || ''}
-                          onChange={(e) => setConfig({ ...config!, ghlCalendarId: e.target.value || undefined })}
+              value={config?.ghlCalendarId || ''}
+              onChange={(e) => setConfig({ ...config!, ghlCalendarId: e.target.value || undefined })}
                           disabled={!config?.enabled || !config?.syncAppointments}
                         />
                       )}
                       <Input
                         label="Or enter Calendar ID manually"
-                        value={config?.ghlCalendarId || ''}
-                        onChange={(e) => setConfig({ ...config!, ghlCalendarId: e.target.value || undefined })}
+              value={config?.ghlCalendarId || ''}
+              onChange={(e) => setConfig({ ...config!, ghlCalendarId: e.target.value || undefined })}
                         disabled={!config?.enabled || !config?.syncAppointments}
-                        placeholder="e.g., abc123xyz"
+              placeholder="e.g., abc123xyz"
                         helperText="Enter the calendar ID if you know it from your CRM account"
-                      />
-                    </div>
+            />
+        </div>
 
                     <div>
                       <Select
@@ -729,62 +769,62 @@ function SettingsPageContent() {
                           { value: 'maid_central_wins', label: 'MaidCentral Always Wins' },
                           { value: 'ghl_wins', label: 'CRM Always Wins' },
                         ]}
-                        value={config?.appointmentConflictResolution || 'timestamp'}
-                        onChange={(e) => setConfig({ 
-                          ...config!, 
-                          appointmentConflictResolution: e.target.value as 'maid_central_wins' | 'ghl_wins' | 'timestamp'
-                        })}
-                        disabled={!config?.enabled || !config?.syncAppointments}
+                value={config?.appointmentConflictResolution || 'timestamp'}
+                onChange={(e) => setConfig({ 
+                  ...config!, 
+                  appointmentConflictResolution: e.target.value as 'maid_central_wins' | 'ghl_wins' | 'timestamp'
+                })}
+                disabled={!config?.enabled || !config?.syncAppointments}
                         helperText="How to handle conflicts when the same appointment is modified in both systems"
                       />
-                    </div>
+            </div>
 
                     <div>
                       <Input
                         label="Sync Interval (minutes)"
-                        type="number"
-                        min="5"
-                        max="1440"
-                        step="5"
-                        value={config?.appointmentSyncInterval || 15}
-                        onChange={(e) => setConfig({ ...config!, appointmentSyncInterval: parseInt(e.target.value) || 15 })}
-                        disabled={!config?.enabled || !config?.syncAppointments}
+                type="number"
+                min="5"
+                max="1440"
+                step="5"
+                value={config?.appointmentSyncInterval || 15}
+                onChange={(e) => setConfig({ ...config!, appointmentSyncInterval: parseInt(e.target.value) || 15 })}
+                disabled={!config?.enabled || !config?.syncAppointments}
                         helperText="How often to poll for appointment changes (5-1440 minutes). Webhooks are used when available."
-                      />
-                    </div>
+              />
+            </div>
 
                     <div>
                       <Button
-                        onClick={async () => {
-                          if (!ghlData?.locationId) {
-                            setMessage({ type: 'error', text: 'Location ID is required' });
-                            return;
-                          }
-                          
-                          try {
-                            const response = await fetch(`/api/sync/appointments?action=full&locationId=${ghlData.locationId}`, { method: 'POST' });
-                            const data = await response.json();
-                            if (response.ok) {
-                              setMessage({ 
-                                type: 'success', 
-                                text: `Sync completed! ${data.synced || 0} appointments synced, ${data.errors || 0} errors.` 
-                              });
-                            } else {
-                              setMessage({ type: 'error', text: data.error || 'Failed to sync appointments' });
-                            }
-                          } catch (error) {
-                            setMessage({ type: 'error', text: 'Failed to sync appointments' });
-                          }
-                        }}
-                        disabled={!config?.enabled || !config?.syncAppointments || !config?.ghlCalendarId}
+                onClick={async () => {
+                  if (!ghlData?.locationId) {
+                    setMessage({ type: 'error', text: 'Location ID is required' });
+                    return;
+                  }
+                  
+                  try {
+                    const response = await fetch(`/api/sync/appointments?action=full&locationId=${ghlData.locationId}`, { method: 'POST' });
+                    const data = await response.json();
+                    if (response.ok) {
+                      setMessage({ 
+                        type: 'success', 
+                        text: `Sync completed! ${data.synced || 0} appointments synced, ${data.errors || 0} errors.` 
+                      });
+                    } else {
+                      setMessage({ type: 'error', text: data.error || 'Failed to sync appointments' });
+                    }
+                  } catch (error) {
+                    setMessage({ type: 'error', text: 'Failed to sync appointments' });
+                  }
+                }}
+                disabled={!config?.enabled || !config?.syncAppointments || !config?.ghlCalendarId}
                         variant="primary"
-                      >
-                        Sync All Appointments Now
+              >
+                Sync All Appointments Now
                       </Button>
-                    </div>
-                  </>
-                )}
-              </div>
+            </div>
+          </>
+        )}
+      </div>
             </Card>
           </TabsContent>
 
@@ -1013,49 +1053,49 @@ function SettingsPageContent() {
                 <div>
                   <Input
                     label="CRM Tags (comma-separated)"
-                    value={config?.ghlTags ? config.ghlTags.join(', ') : (config?.ghlTag || '')}
-                    onChange={(e) => {
-                      const tagsStr = e.target.value.trim();
-                      if (tagsStr) {
-                        const tags = tagsStr.split(',').map(t => t.trim()).filter(t => t.length > 0);
+            value={config?.ghlTags ? config.ghlTags.join(', ') : (config?.ghlTag || '')}
+            onChange={(e) => {
+              const tagsStr = e.target.value.trim();
+              if (tagsStr) {
+                const tags = tagsStr.split(',').map(t => t.trim()).filter(t => t.length > 0);
                         setConfig({ ...config!, ghlTags: tags, ghlTag: tags[0] || undefined });
-                      } else {
-                        setConfig({ ...config!, ghlTags: [], ghlTag: undefined });
-                      }
-                    }}
+              } else {
+                setConfig({ ...config!, ghlTags: [], ghlTag: undefined });
+              }
+            }}
                     placeholder="e.g., MaidCentral Quote, Quote Source, New Lead"
-                    disabled={!config?.enabled}
+            disabled={!config?.enabled}
                     helperText="Enter multiple tags separated by commas. These tags will be added to contacts created/updated by the integration. Leave empty to skip tagging."
-                  />
-                  {config?.ghlTags && config.ghlTags.length > 0 && (
+          />
+          {config?.ghlTags && config.ghlTags.length > 0 && (
                     <div className="mt-4 flex flex-wrap gap-2">
                       {config.ghlTags.map((tag, index) => (
                         <Badge key={index} variant="info" size="lg">
                           {tag}
                         </Badge>
                       ))}
-                    </div>
-                  )}
-                </div>
+            </div>
+          )}
+      </div>
 
                 <Alert variant="info">
                   <p className="font-medium mb-2">Automatic Field Mapping:</p>
                   <ul className="text-sm space-y-1 list-disc list-inside">
                     <li><strong>Basic Fields:</strong> Name, email, phone, and address automatically map to CRM&apos;s native contact fields</li>
                     <li><strong>All Other Fields:</strong> Automatically create custom fields with prefix <code className="bg-white/50 px-1 rounded">{config?.customFieldPrefix || 'maidcentral_quote_'}</code></li>
-                    <li><strong>No Manual Mapping:</strong> Everything happens automatically based on field names</li>
-                  </ul>
+            <li><strong>No Manual Mapping:</strong> Everything happens automatically based on field names</li>
+          </ul>
                 </Alert>
-              </div>
+        </div>
             </Card>
           </TabsContent>
         </Tabs>
 
         <Card padding="lg">
           <Button 
-            onClick={saveConfig} 
+          onClick={saveConfig} 
             variant="primary" 
-            disabled={saving || !config}
+          disabled={saving || !config}
             className="w-full"
             size="lg"
           >

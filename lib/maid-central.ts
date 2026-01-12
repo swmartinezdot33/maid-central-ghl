@@ -733,7 +733,192 @@ export class MaidCentralAPI {
     console.error('[Maid Central API] Could not find valid appointment update endpoint for ID:', appointmentId);
     throw lastError || new Error('Failed to update appointment - endpoint not found');
   }
+
+  // ===== Service/Quoting API Methods =====
+  // Get Scope Groups for quote creation
+  async getScopeGroups(locationId?: string): Promise<any[]> {
+    const token = await this.getAuthHeader(locationId);
+    
+    const endpoints = [
+      `/api/Lead/ScopeGroups`,
+      `/api/ScopeGroups`,
+      `/api/Quote/ScopeGroups`,
+    ];
+
+    let lastError: any = null;
+    
+    for (const endpoint of endpoints) {
+      try {
+        const url = `${MAID_CENTRAL_API_BASE_URL}${endpoint}`;
+        const response = await axios.get(url, {
+          headers: {
+            Authorization: token,
+          },
+        });
+        const data = response.data?.Result || response.data?.data || response.data;
+        if (Array.isArray(data)) {
+          return data;
+        } else if (data && typeof data === 'object') {
+          const scopeGroups = data.scopeGroups || data.ScopeGroups || data.groups;
+          if (Array.isArray(scopeGroups)) {
+            return scopeGroups;
+          }
+        }
+      } catch (error) {
+        lastError = error;
+        console.log(`[Maid Central API] ScopeGroups endpoint ${endpoint} failed, trying next...`);
+        continue;
+      }
+    }
+    
+    console.warn('[Maid Central API] Could not fetch scope groups, returning empty array');
+    return [];
+  }
+
+  // Get Scopes for a specific Scope Group
+  async getScopes(scopeGroupId: string | number, locationId?: string): Promise<any[]> {
+    const token = await this.getAuthHeader(locationId);
+    
+    const endpoints = [
+      `/api/Lead/Scopes?scopeGroupId=${scopeGroupId}`,
+      `/api/Scopes?scopeGroupId=${scopeGroupId}`,
+      `/api/Quote/Scopes?scopeGroupId=${scopeGroupId}`,
+      `/api/ScopeGroup/${scopeGroupId}/Scopes`,
+    ];
+
+    let lastError: any = null;
+    
+    for (const endpoint of endpoints) {
+      try {
+        const url = `${MAID_CENTRAL_API_BASE_URL}${endpoint}`;
+        const response = await axios.get(url, {
+          headers: {
+            Authorization: token,
+          },
+        });
+        const data = response.data?.Result || response.data?.data || response.data;
+        if (Array.isArray(data)) {
+          return data;
+        } else if (data && typeof data === 'object') {
+          const scopes = data.scopes || data.Scopes || data.items;
+          if (Array.isArray(scopes)) {
+            return scopes;
+          }
+        }
+      } catch (error) {
+        lastError = error;
+        console.log(`[Maid Central API] Scopes endpoint ${endpoint} failed, trying next...`);
+        continue;
+      }
+    }
+    
+    console.warn(`[Maid Central API] Could not fetch scopes for scope group ${scopeGroupId}, returning empty array`);
+    return [];
+  }
+
+  // Get Questions for selected Scopes
+  async getQuestions(scopeIds: string[] | number[], locationId?: string): Promise<any[]> {
+    const token = await this.getAuthHeader(locationId);
+    
+    const scopeIdsParam = Array.isArray(scopeIds) ? scopeIds.join(',') : scopeIds;
+    
+    const endpoints = [
+      `/api/Lead/Questions?scopeIds=${scopeIdsParam}`,
+      `/api/Questions?scopeIds=${scopeIdsParam}`,
+      `/api/Quote/Questions?scopeIds=${scopeIdsParam}`,
+    ];
+
+    let lastError: any = null;
+    
+    for (const endpoint of endpoints) {
+      try {
+        const url = `${MAID_CENTRAL_API_BASE_URL}${endpoint}`;
+        const response = await axios.get(url, {
+          headers: {
+            Authorization: token,
+          },
+        });
+        const data = response.data?.Result || response.data?.data || response.data;
+        if (Array.isArray(data)) {
+          return data;
+        } else if (data && typeof data === 'object') {
+          const questions = data.questions || data.Questions || data.items;
+          if (Array.isArray(questions)) {
+            return questions;
+          }
+        }
+      } catch (error) {
+        lastError = error;
+        console.log(`[Maid Central API] Questions endpoint ${endpoint} failed, trying next...`);
+        continue;
+      }
+    }
+    
+    console.warn('[Maid Central API] Could not fetch questions, returning empty array');
+    return [];
+  }
+
+  // Get available Postal Codes (service areas)
+  async getPostalCodes(locationId?: string): Promise<any[]> {
+    const token = await this.getAuthHeader(locationId);
+    
+    const endpoints = [
+      `/api/Lead/PostalCodes`,
+      `/api/PostalCodes`,
+      `/api/Quote/PostalCodes`,
+      `/api/ServiceAreas`,
+    ];
+
+    let lastError: any = null;
+    
+    for (const endpoint of endpoints) {
+      try {
+        const url = `${MAID_CENTRAL_API_BASE_URL}${endpoint}`;
+        const response = await axios.get(url, {
+          headers: {
+            Authorization: token,
+          },
+        });
+        const data = response.data?.Result || response.data?.data || response.data;
+        if (Array.isArray(data)) {
+          return data;
+        } else if (data && typeof data === 'object') {
+          const postalCodes = data.postalCodes || data.PostalCodes || data.serviceAreas || data.ServiceAreas;
+          if (Array.isArray(postalCodes)) {
+            return postalCodes;
+          }
+        }
+      } catch (error) {
+        lastError = error;
+        console.log(`[Maid Central API] PostalCodes endpoint ${endpoint} failed, trying next...`);
+        continue;
+      }
+    }
+    
+    console.warn('[Maid Central API] Could not fetch postal codes, returning empty array');
+    return [];
+  }
+
+  // Validate if a postal code is serviceable
+  async validatePostalCode(postalCode: string, locationId?: string): Promise<boolean> {
+    try {
+      const postalCodes = await this.getPostalCodes(locationId);
+      if (postalCodes.length === 0) {
+        console.warn('[Maid Central API] No postal codes available for validation');
+        return true; // Allow if we can't validate
+      }
+      
+      return postalCodes.some((pc: any) => {
+        const pcValue = pc.PostalCode || pc.postalCode || pc.ZipCode || pc.zipCode || String(pc);
+        return String(pcValue).toUpperCase() === String(postalCode).toUpperCase();
+      });
+    } catch (error) {
+      console.error('[Maid Central API] Error validating postal code:', error);
+      return true; // Allow if validation fails
+    }
+  }
 }
 
 export const maidCentralAPI = new MaidCentralAPI();
+
 

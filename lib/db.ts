@@ -57,6 +57,48 @@ export interface IntegrationConfig {
   lastQuotePollAt?: number; // Timestamp of last quote poll
 }
 
+export interface ThemeColors {
+  primary?: string;
+  secondary?: string;
+  background?: string;
+  text?: string;
+  textLight?: string;
+  border?: string;
+  success?: string;
+  error?: string;
+}
+
+export interface Typography {
+  fontFamily?: string;
+  heading1Size?: string;
+  heading2Size?: string;
+  bodySize?: string;
+  headingWeight?: string;
+  bodyWeight?: string;
+}
+
+export interface LayoutConfig {
+  multiStep?: boolean;
+  fieldArrangement?: 'single-column' | 'two-column';
+  showBranding?: boolean;
+  showProgress?: boolean;
+}
+
+export interface FieldVisibility {
+  [key: string]: boolean;
+}
+
+export interface WidgetConfig {
+  locationId: string;
+  themeColors?: ThemeColors;
+  typography?: Typography;
+  layout?: LayoutConfig;
+  customCss?: string;
+  fieldVisibility?: FieldVisibility;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
 // Initialize database tables
 export async function initDatabase(): Promise<void> {
   const sql = getSql();
@@ -328,6 +370,31 @@ export async function initDatabase(): Promise<void> {
     `;
 
     // Note: We no longer create a default config row since location_id is now required
+
+    // Widget configuration table for storing customization settings
+    await sql`
+      CREATE TABLE IF NOT EXISTS widget_config (
+        id SERIAL PRIMARY KEY,
+        location_id TEXT UNIQUE NOT NULL,
+        theme_colors JSONB,
+        typography JSONB,
+        layout JSONB,
+        custom_css TEXT,
+        field_visibility JSONB,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `;
+
+    // Add index on location_id for faster lookups
+    try {
+      await sql`
+        CREATE UNIQUE INDEX IF NOT EXISTS widget_config_location_id_idx 
+        ON widget_config (location_id)
+      `;
+    } catch (error) {
+      console.log('Widget config index might already exist:', error);
+    }
   } catch (error) {
     console.error('Database initialization error:', error);
     throw error;
@@ -1175,5 +1242,64 @@ export async function deleteTeamCalendarMapping(
   await sql`
     DELETE FROM team_calendar_mappings
     WHERE location_id = ${locationId} AND maid_central_team_id = ${maidCentralTeamId}
+  `;
+}
+
+// Widget Configuration
+export async function storeWidgetConfig(config: WidgetConfig): Promise<void> {
+  await initDatabase();
+  const sql = getSql();
+
+  if (!config.locationId) {
+    throw new Error('Location ID is required');
+  }
+
+  await sql`
+    INSERT INTO widget_config (location_id, theme_colors, typography, layout, custom_css, field_visibility, updated_at)
+    VALUES (${config.locationId}, ${JSON.stringify(config.themeColors)}, ${JSON.stringify(config.typography)}, ${JSON.stringify(config.layout)}, ${config.customCss || null}, ${JSON.stringify(config.fieldVisibility)}, NOW())
+    ON CONFLICT (location_id) DO UPDATE SET
+      theme_colors = ${JSON.stringify(config.themeColors)},
+      typography = ${JSON.stringify(config.typography)},
+      layout = ${JSON.stringify(config.layout)},
+      custom_css = ${config.customCss || null},
+      field_visibility = ${JSON.stringify(config.fieldVisibility)},
+      updated_at = NOW()
+  `;
+}
+
+export async function getWidgetConfig(locationId: string): Promise<WidgetConfig | null> {
+  await initDatabase();
+  const sql = getSql();
+
+  const result = await sql`
+    SELECT * FROM widget_config
+    WHERE location_id = ${locationId}
+    LIMIT 1
+  `;
+
+  if (result.length === 0) {
+    return null;
+  }
+
+  const row = result[0];
+  return {
+    locationId: row.location_id as string,
+    themeColors: row.theme_colors ? JSON.parse(row.theme_colors as string) : undefined,
+    typography: row.typography ? JSON.parse(row.typography as string) : undefined,
+    layout: row.layout ? JSON.parse(row.layout as string) : undefined,
+    customCss: row.custom_css as string | undefined,
+    fieldVisibility: row.field_visibility ? JSON.parse(row.field_visibility as string) : undefined,
+    createdAt: row.created_at ? new Date(row.created_at as Date) : undefined,
+    updatedAt: row.updated_at ? new Date(row.updated_at as Date) : undefined,
+  };
+}
+
+export async function deleteWidgetConfig(locationId: string): Promise<void> {
+  await initDatabase();
+  const sql = getSql();
+
+  await sql`
+    DELETE FROM widget_config
+    WHERE location_id = ${locationId}
   `;
 }
