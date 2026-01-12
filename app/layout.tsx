@@ -12,14 +12,16 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   const pathname = usePathname();
-  const isWidgetPage = pathname?.startsWith('/widget');
+  // Only hide nav for the embedded widget page (/widget with query params)
+  // Keep nav for /widget-config and other dashboard pages
+  const isEmbeddedWidget = pathname === '/widget';
 
   return (
     <html lang="en">
       <body>
         <GHLIframeProvider>
-          {isWidgetPage ? (
-            // Widget page - no navigation or header
+          {isEmbeddedWidget ? (
+            // Embedded widget page - no navigation or header
             <div style={{ minHeight: '100vh', backgroundColor: '#ffffff' }}>
               {children}
             </div>
