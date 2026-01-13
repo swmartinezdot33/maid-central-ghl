@@ -14,7 +14,17 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    console.log('[Scope Groups] Fetching for location:', locationId);
     const scopeGroups = await maidCentralAPI.getScopeGroups(locationId);
+    
+    if (!scopeGroups || scopeGroups.length === 0) {
+      console.warn('[Scope Groups] No scope groups returned for location:', locationId);
+      return NextResponse.json({
+        scopeGroups: [],
+        count: 0,
+        warning: 'No service types available. Ensure MaidCentral credentials are configured for this location.',
+      });
+    }
     
     return NextResponse.json({
       scopeGroups,

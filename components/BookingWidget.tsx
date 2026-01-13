@@ -140,12 +140,20 @@ export default function BookingWidget() {
   const loadScopeGroups = async (locId: string) => {
     try {
       const response = await fetch(`/api/maid-central/scope-groups?locationId=${locId}`);
+      const data = await response.json();
+      
       if (response.ok) {
-        const data = await response.json();
         setScopeGroups(data.scopeGroups || []);
+        if (data.warning) {
+          console.warn('[Widget] Scope Groups Warning:', data.warning);
+        }
+      } else {
+        console.error('[Widget] Error loading scope groups:', data.error);
+        setError(`Unable to load services: ${data.error}`);
       }
     } catch (err) {
       console.error('Error loading scope groups:', err);
+      setError(`Unable to load services: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
