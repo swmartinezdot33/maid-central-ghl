@@ -750,28 +750,33 @@ export class MaidCentralAPI {
     for (const endpoint of endpoints) {
       try {
         const url = `${MAID_CENTRAL_API_BASE_URL}${endpoint}`;
+        console.log(`[Maid Central API] Trying ScopeGroups endpoint: ${endpoint}`);
         const response = await axios.get(url, {
           headers: {
             Authorization: token,
           },
         });
+        console.log(`[Maid Central API] ScopeGroups response from ${endpoint}:`, response.data);
         const data = response.data?.Result || response.data?.data || response.data;
         if (Array.isArray(data)) {
+          console.log(`[Maid Central API] Successfully fetched ${data.length} scope groups from ${endpoint}`);
           return data;
         } else if (data && typeof data === 'object') {
           const scopeGroups = data.scopeGroups || data.ScopeGroups || data.groups;
           if (Array.isArray(scopeGroups)) {
+            console.log(`[Maid Central API] Successfully fetched ${scopeGroups.length} scope groups from ${endpoint}`);
             return scopeGroups;
           }
         }
+        console.log(`[Maid Central API] ScopeGroups endpoint ${endpoint} returned non-array data`);
       } catch (error) {
         lastError = error;
-        console.log(`[Maid Central API] ScopeGroups endpoint ${endpoint} failed, trying next...`);
+        console.error(`[Maid Central API] ScopeGroups endpoint ${endpoint} failed:`, error instanceof Error ? error.message : error);
         continue;
       }
     }
     
-    console.warn('[Maid Central API] Could not fetch scope groups, returning empty array');
+    console.error('[Maid Central API] Could not fetch scope groups from any endpoint. Last error:', lastError instanceof Error ? lastError.message : lastError);
     return [];
   }
 
@@ -791,28 +796,33 @@ export class MaidCentralAPI {
     for (const endpoint of endpoints) {
       try {
         const url = `${MAID_CENTRAL_API_BASE_URL}${endpoint}`;
+        console.log(`[Maid Central API] Trying Scopes endpoint: ${endpoint}`);
         const response = await axios.get(url, {
           headers: {
             Authorization: token,
           },
         });
+        console.log(`[Maid Central API] Scopes response from ${endpoint}:`, response.data);
         const data = response.data?.Result || response.data?.data || response.data;
         if (Array.isArray(data)) {
+          console.log(`[Maid Central API] Successfully fetched ${data.length} scopes from ${endpoint}`);
           return data;
         } else if (data && typeof data === 'object') {
           const scopes = data.scopes || data.Scopes || data.items;
           if (Array.isArray(scopes)) {
+            console.log(`[Maid Central API] Successfully fetched ${scopes.length} scopes from ${endpoint}`);
             return scopes;
           }
         }
+        console.log(`[Maid Central API] Scopes endpoint ${endpoint} returned non-array data`);
       } catch (error) {
         lastError = error;
-        console.log(`[Maid Central API] Scopes endpoint ${endpoint} failed, trying next...`);
+        console.error(`[Maid Central API] Scopes endpoint ${endpoint} failed:`, error instanceof Error ? error.message : error);
         continue;
       }
     }
     
-    console.warn(`[Maid Central API] Could not fetch scopes for scope group ${scopeGroupId}, returning empty array`);
+    console.error(`[Maid Central API] Could not fetch scopes for scope group ${scopeGroupId} from any endpoint. Last error:`, lastError instanceof Error ? lastError.message : lastError);
     return [];
   }
 
@@ -833,28 +843,33 @@ export class MaidCentralAPI {
     for (const endpoint of endpoints) {
       try {
         const url = `${MAID_CENTRAL_API_BASE_URL}${endpoint}`;
+        console.log(`[Maid Central API] Trying Questions endpoint: ${endpoint}`);
         const response = await axios.get(url, {
           headers: {
             Authorization: token,
           },
         });
+        console.log(`[Maid Central API] Questions response from ${endpoint}:`, response.data);
         const data = response.data?.Result || response.data?.data || response.data;
         if (Array.isArray(data)) {
+          console.log(`[Maid Central API] Successfully fetched ${data.length} questions from ${endpoint}`);
           return data;
         } else if (data && typeof data === 'object') {
           const questions = data.questions || data.Questions || data.items;
           if (Array.isArray(questions)) {
+            console.log(`[Maid Central API] Successfully fetched ${questions.length} questions from ${endpoint}`);
             return questions;
           }
         }
+        console.log(`[Maid Central API] Questions endpoint ${endpoint} returned non-array data`);
       } catch (error) {
         lastError = error;
-        console.log(`[Maid Central API] Questions endpoint ${endpoint} failed, trying next...`);
+        console.error(`[Maid Central API] Questions endpoint ${endpoint} failed:`, error instanceof Error ? error.message : error);
         continue;
       }
     }
     
-    console.warn('[Maid Central API] Could not fetch questions, returning empty array');
+    console.error('[Maid Central API] Could not fetch questions from any endpoint. Last error:', lastError instanceof Error ? lastError.message : lastError);
     return [];
   }
 
