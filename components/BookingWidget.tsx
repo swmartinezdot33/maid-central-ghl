@@ -434,7 +434,7 @@ export default function BookingWidget() {
               <option value="">Choose a service type</option>
               {scopeGroups.map((group: any) => (
                 <option key={group.ScopeGroupId || group.id} value={group.ScopeGroupId || group.id}>
-                  {group.ScopeGroupName || group.name}
+                  {group.ScopeGroupName || group.Name || group.name}
                 </option>
               ))}
             </select>
@@ -459,7 +459,7 @@ export default function BookingWidget() {
                         handleScopeChange(scopeId, e.target.checked);
                       }}
                     />
-                    <span>{scope.ScopeName || scope.name}</span>
+                    <span>{scope.ScopeName || scope.Name || scope.name}</span>
                   </label>
                 ))}
               </div>
